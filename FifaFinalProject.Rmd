@@ -1,0 +1,1221 @@
+---
+title: "The Effect of Player Attributes on Overall Player Rating in FIFA 19"
+author: "I. Arvelo, S. Ryu, W. Jeffries, H. Walsh"
+date: "May 26, 2021"
+output: 
+  pdf_document:
+    fig_height: 6
+    fig_width: 8
+  html_document:
+    fig_height: 3
+    fig_width: 5
+  word_document:
+    fig_height: 3
+    fig_width: 5
+---
+
+```{r, setup, include=FALSE}
+require(mosaic)   # Load additional packages here 
+knitr::opts_chunk$set(
+  tidy=FALSE,     # display code as typed
+  size="small")   # slightly smaller font for code
+```
+
+```{r, include=FALSE}
+#Load Libraries for Analysis 
+library(tidyverse)
+library(ggpubr)
+library("PerformanceAnalytics")
+library(mosaic)
+library(factoextra)
+library(corrplot)
+library(glmnet)
+library(neuralnet)
+library(nnet)
+library(tinytex)
+library(huxtable)
+library(ztable)
+library(lars)
+```
+
+
+$$\\[2in]$$
+
+
+
+**Abstract**: This paper attempts to replicate the algorithm to determine the overall rating of players in the FIFA 19 video game to understand which player attributes are most important for each position. The analysis specifically focuses on models that predict the overall rating of defenders. A variety of statistical methods were employed to make sense of the data including Multiple Linear Regression, Lasso Regression, and a Neural Network. Our findings indicate the different skill sets are necessary to be highly rated in each position and standing tackle, interceptions, heading accuracy, sliding tackle, and marking are specifically important in the defensive end of the field. The results of this study apply specifically to the FIFA 19 game since the professional soccer and iterations of the FIFA video game are constantly changing. 
+
+$$\\[1in]$$
+
+**Keywords**: Multiple Linear Regression, Statistical Interaction, Model Comparison
+
+\newpage
+
+## Introduction
+
+The motivation of this study was to discover which attributes and skills were the most important in determining a player’s overall rating. People should care about the findings of this study if they are a fan of the FIFA 19 video game, as this will give them some insight into how the game works and why certain players are rated higher than others.  Our response variable of interest is overall rating, which is an integer from 0 to 99 on a player’s card which is a weighted average of attributes and international reputation that essentially describes how good a player is at soccer.
+
+*Hypotheses*:
+
+$H_O$: All skills and abilities are equally important in determining a player’s rating for all positions.
+&nbsp;
+&nbsp;
+$H_A$: All skills and abilities are not equally important in determining a player’s rating for all positions.
+
+
+## Data Collection and Preparation
+
+```{r, include=FALSE}
+Fifa <- read_csv("JMPCleanFifa.dat")
+```
+
+*Data Collection*: The “FIFA  19 Complete Data Set” was obtained on Kaggle.  It is an 8.72MB data set with 18,207 unique players and 89 variables for each. There were no issues downloading the data set, as it was simply a matter of downloading the .csv file.
+
+```{r, include=FALSE}
+#removing row number column
+Fifa<- Fifa[,2:83]
+
+#fixing variable name
+Fifa$InternationalReputation<-Fifa$`International Reputation`
+
+#changing height from ft' in character variable to continuous numerical variable 
+Fifa$Height<- sapply(strsplit(as.character(Fifa$Height),"'"),
+        function(x){12*as.numeric(x[1]) + as.numeric(x[2])})
+
+#removing 60 players that do not position variable populated because this is the criteria we are using to segment our data 
+Fifa<- Fifa[!is.na(Fifa$Position), ]
+```
+
+*Data Preparation*: In terms of preparing the data, we first had to clean up the variables and decided to do preliminary data cleaning in JMP. We had to convert Wages and Value from character type in Euros to a continuous numerical variable in dollar units. We also had to remove lbs off the end of Weight and convert it to a continuous numeric variable. There were also variables we had to eliminate because they were not as relevant to our analysis. Photo, flag, logo columns, variables related to the video game itself (i.e. RealFace and Body Types), ID, Jersey number, Release Clause, and Special were the variables we deleted from our data set. At this point, we imported the cleaned data into R and changed height from ft’in character format to numerical variables (in inches) and removed players who did not have data populated for position. A lot of the missing values in our original data set were removed through this process. 
+
+
+## Data Collection and Preparation
+
+```{r,include=FALSE}
+#looking at how many players each position to know which strings for Position to include in each position group
+Fifa %>% count(Position)
+```
+
+```{r,include=FALSE}
+#making position group variable to see how physical charateristics vary across players in different parts of the field
+Fifa<- Fifa %>% mutate(Posgroup = case_when(
+                Fifa$Position == "RB" | Fifa$Position == "CB" | Fifa$Position == "RCB" | Fifa$Position == "LB" 
+                | Fifa$Position == "RWB" | Fifa$Position == "LWB" | Fifa$Position == "LCB"~ 'Backs',
+                
+                Fifa$Position == "LM"|Fifa$Position =="RM"|Fifa$Position == "CAM"|Fifa$Position == "CM"| Fifa$Position
+                =="CDM" | Fifa$Position =="RDM" | Fifa$Position =="RCM" | Fifa$Position =="RAM" | Fifa$Position =="LAM" |
+                  Fifa$Position =="LCM"| Fifa$Position =="LDM" ~ 'Mids' , 
+                
+                Fifa$Position == "GK" ~ "Goalies", 
+                                                   TRUE ~ 'Forwards',
+                                                   ))
+```
+
+
+```{r,echo=FALSE, fig.height=6, fig.width = 8, warning = FALSE}
+Weights <- ggplot(Fifa, aes(x= Posgroup, y=Weight))+
+  geom_boxplot() + xlab("Position") + ylab("Weight (lbs)")
+Heights <- ggplot(Fifa, aes(x= Posgroup, y=Height))+
+  geom_boxplot() + xlab("Position") + ylab("Height (inches)")
+Ages <- ggplot(Fifa, aes(x= Posgroup, y=Age))+
+  geom_boxplot() + xlab("Position") + ylab("Age")
+
+ggarrange(Weights, Heights, Ages, nrow = 2, ncol = 2)
+```
+
+Goalies tend to be the tallest and subsequently heaviest position group. There are not many unusually old, young, tall or short players either. Overall, physical characteristics are fairly similar across positions 
+
+$$\\[3in]$$
+
+```{r, include=FALSE}
+summary(Fifa$InternationalReputation)
+```
+
+```{r, include=FALSE}
+Fifa %>% group_by(Posgroup) %>% count(InternationalReputation)
+```
+
+```{r, include=FALSE}
+#Before we split the data into positions, let's look at which players have the highest overall ranking and which clubs and countries have the highest median ranking. It will be interesting to note if most of the top 10 players are on the top 10 teams
+ClubRankings<- Fifa %>%
+    group_by(Club) %>%
+    summarise(medianRanking = median(Overall))
+
+NationRankings<- Fifa %>%
+    group_by(Nationality) %>%
+    summarise(medianRanking = median(Overall))
+```
+
+
+```{r, echo = FALSE}
+top10players<- Fifa[1:10,c(1,4)]
+top10players
+```
+Many of the players with the highest overall ratings are household names such as Lionel Messi and Cristiano Ronaldo. Although overall rating is out of 99, the highest ranked players do not surpass a rating of 94. Almost all 10 of these players play in La Liga or the Premier League.
+
+$$\\[1in]$$
+
+
+
+
+```{r, echo = FALSE}
+CR<- ClubRankings %>% arrange(desc(medianRanking))
+CR[1:10, ]
+```
+It is interesting to note that there are some big time names missing in the top ten teams with the highest median player rankings in Fifa 19 such as Milan, Paris Saint Germain, and Roma.  This is most likely due to the fact that these teams, while high powered, have lacking benches according to Fifa ratings and are therefore deemed as lower overall by median rating while they would be higher ranked by a mean ranking.
+ $$\\[1in]$$
+
+```{r, include= FALSE}
+ClubRankings2<- Fifa %>%
+    group_by(Club) %>%
+    summarise(meanRanking = mean(Overall))
+ClubRankings2 %>% arrange(desc(meanRanking))
+```
+
+
+```{r, echo = FALSE}
+NR<- NationRankings %>% arrange(desc(medianRanking))
+NR[1:10, ]
+```
+The countries that have the highest median player rating are mostly in the Eastern Hemisphere, many falling between the Middle East and Africa.
+
+$$\\[1in]$$
+```{r, include = FALSE, warning=FALSE}
+#Separating data into four major groups by position
+GK<- subset(Fifa, Position == "GK")
+
+Backs<- subset(Fifa, Position == "RB" |Position =="CB" |Position =="RCB"|Position == "LB"|Position == "RWB"| Position =="LWB" | Position
+               =="LCB")
+
+Mids<- subset(Fifa, Position == "LM"|Position =="RM"|Position == "CAM"|Position == "CM"| Position =="CDM" | Position =="RDM" | Position
+              =="RCM" | Position =="RAM" | Position =="LAM" | Position =="LCM"| Position =="LDM")
+
+Forwards<- subset(Fifa, Position == "RW"|Position =="LW"|Position == "CF"|Position == "ST"| Position =="RF"| Position =="LS" | Position
+                  =="LF" | Position =="RS")
+
+#Exporting text files for each data set so that I can run regression tree analysis on each position group in JMP
+write.table(GK, "/Users/isabelarvelo/Desktop/Stat 346/GK.txt", sep="\t", row.names=FALSE)
+
+write.table(Backs, "/Users/isabelarvelo/Desktop/Stat 346/Backs.txt", sep="\t", row.names=FALSE)
+
+write.table(Mids, "/Users/isabelarvelo/Desktop/Stat 346/Mids.txt", sep="\t", row.names=FALSE)
+
+write.table(Forwards, "/Users/isabelarvelo/Desktop/Stat 346/Forwards.txt", sep="\t", row.names=FALSE)
+```
+
+```{r, include=FALSE}
+#looking at how many players each position to know which strings for Position to include in each position group
+Fifa %>% count(Position)
+```
+
+
+
+```{r, echo = FALSE, include= FALSE}
+#Let's return to international reputation and look at its distribution by position. 
+IR1<- ggplot(GK, aes(x = InternationalReputation)) + geom_histogram() + ggtitle("Goalkeepers")
+IR2<-ggplot(Backs, aes(x = InternationalReputation)) + geom_histogram() + ggtitle("Backs")
+IR3<-ggplot(Mids, aes(x = InternationalReputation)) + geom_histogram()+ ggtitle("Mids")
+IR4<-ggplot(Forwards, aes(x = InternationalReputation)) + geom_histogram() + ggtitle("Forwards")
+```
+
+```{r, echo = FALSE}
+ggarrange(IR1, IR2, IR3, IR4, ncol = 2, nrow = 2)
+```
+
+
+As we can see from the above, it is interesting that the international reputation figures matter so little for so many players. International reputation is a statistic that basically takes into account the teams overall popularity in relation to the player and then boosts their stats accordingly.  The international reputation graphs for all position groups are heavily right skewed and it is interesting to note that there are only a few goalkeepers and forwards that have international reputations of a five.
+
+$$\\[1in]$$
+
+\newpage
+
+We then segmented the data by the four major position groups: Defenders, Midfielders, Forwards, and Goalie. We imported a data file with information from each position group into JMP and created regression trees to determine the 10 to 12 most important skills for determining Overall Rating based on which variables the data split on for each position. 
+
+![JMP Regression Trees](RegressionTrees.png)
+
+From this point on in the analysis, we will focus on the variables that split the data the most in the regression trees. We will also explore and include age, weight, and height to control for physical charactersitics between players. The last variable we are choosing to include is international reputation since, using domain knowledge, we know that it goes into the calculation for overall rating so we want to control for it when considering  which player attributes are important. 
+
+\newpage
+
+# Forwards
+```{r, include = FALSE}
+#Starting eith Explorstory Data Analysis for Forwards
+
+#Creating a new variable for each player attribute that categorizes skill level as "Poor", "Fair", "Good", "Very Good", or "Excellent
+#The range for these ratings were based off of the fifa website 
+
+FD <- Forwards %>%  mutate(Rating = ifelse(Stamina < 40, "Very Poor", ifelse(Stamina < 50, "Poor", ifelse(Stamina < 60, "Fair",
+ifelse(Stamina < 70, "Good", ifelse(Stamina < 80, "Good", ifelse(Stamina < 90, "Very Good", "Excellent"))))))) %>%  mutate(Rating1 = ifelse(LongShots < 40, "Very Poor", ifelse(LongShots < 50, "Poor", ifelse(LongShots < 60, "Fair", ifelse(LongShots < 70, "Good", ifelse(LongShots < 80, "Good", ifelse(LongShots < 90, "Very Good", "Excellent")))))))  %>%  mutate(Rating2 = ifelse(StandingTackle < 15, "Very Poor", ifelse(StandingTackle < 20, "Poor", ifelse(StandingTackle < 25, "Fair", ifelse(StandingTackle < 30, "Good", ifelse(StandingTackle < 35, "Good", ifelse(StandingTackle < 45, "Very Good", "Excellent"))))))) %>%  mutate(Rating3 = ifelse(Height < 64, "Very Poor", ifelse(Height < 67, "Poor", ifelse(Height < 70, "Fair", ifelse(Height < 73, "Good", ifelse(Height < 76, "Very Good", "Excellent"))))))  %>%  mutate(Rating4 = ifelse(Volleys < 40, "Very Poor", ifelse(Volleys < 50, "Poor", ifelse(Volleys < 60, "Fair", ifelse(Volleys < 70, "Good", ifelse(Volleys < 80, "Good", ifelse(Volleys < 90, "Very Good", "Excellent")))))))  %>%  mutate(Rating5 = ifelse(Strength < 40, "Very Poor", ifelse(Strength < 50, "Poor", ifelse(Strength < 60, "Fair", ifelse(Strength < 70, "Good", ifelse(Strength < 80, "Good", ifelse(Strength < 90, "Very Good", "Excellent")))))) ) %>%  mutate(Rating6 = ifelse(Jumping < 40, "Very Poor", ifelse(Jumping < 50, "Poor", ifelse(Jumping < 60, "Fair", ifelse(Jumping < 70, "Good", ifelse(Jumping < 80, "Good", ifelse(Jumping < 90, "Very Good", "Excellent")))))))  %>%  mutate(Rating7 = ifelse(Agility < 40, "Very Poor", ifelse(Agility < 50, "Poor", ifelse(Agility < 60, "Fair", ifelse(Agility < 70, "Good", ifelse(Agility < 80, "Good", ifelse(Agility < 90, "Very Good", "Excellent"))))))) 
+
+#Creating Histograms for Each Important skill for forwards 
+
+A <-ggplot(FD, aes(x=Stamina, fill=Rating)) + 
+  geom_histogram(position="identity", alpha=.75, binwidth=1) + 
+  scale_x_continuous(lim=c(30,100)) + 
+  labs(title="Stamina") +
+  theme(plot.title = element_text(hjust = 0.5))
+B <- ggplot(FD, aes(x=LongShots, fill=Rating1)) + 
+  geom_histogram(position="identity", alpha=.75, binwidth=1) + 
+scale_x_continuous(lim=c(30,100)) + 
+  labs(title="Long Shots") +
+  theme(plot.title = element_text(hjust = 0.5))
+C <- ggplot(FD, aes(x=StandingTackle, fill=Rating2)) + 
+  geom_histogram(position="identity", alpha=.75, binwidth=1) + 
+  scale_x_continuous(lim=c(0,100)) + 
+  labs(title="Standing Tackle") +
+  theme(plot.title = element_text(hjust = 0.5))
+D <- ggplot(FD, aes(x=Height, fill=Rating3)) + 
+  geom_histogram(position="identity", alpha=.75, binwidth=1) + 
+  scale_x_continuous(lim=c(60,80)) + 
+  labs(title="Height") +
+  theme(plot.title = element_text(hjust = 0.5))
+E <- ggplot(FD, aes(x=Volleys, fill=Rating4)) + 
+  geom_histogram(position="identity", alpha=.75, binwidth=1) + 
+  scale_x_continuous(lim=c(30,100)) + 
+  labs(title="Volleys") +
+  theme(plot.title = element_text(hjust = 0.5))
+I <- ggplot(FD, aes(x=Strength, fill=Rating5)) + 
+  geom_histogram(position="identity", alpha=.75, binwidth=1) + 
+  scale_x_continuous(lim=c(30,100)) + 
+  labs(title="Strength") +
+  theme(plot.title = element_text(hjust = 0.5))
+G <- ggplot(FD, aes(x=Jumping, fill=Rating6)) +
+  geom_histogram(position="identity", alpha=.75, binwidth=1) + 
+  scale_x_continuous(lim=c(30,100)) + 
+  labs(title="Jumping") +
+  theme(plot.title = element_text(hjust = 0.5), legend.title=element_blank())
+H <- ggplot(FD, aes(x=Agility, fill=Rating7)) + 
+  geom_histogram(position="identity", alpha=1, binwidth=1) + 
+  scale_x_continuous(lim=c(30,100)) + 
+  labs(title="Agility") +
+  theme(plot.title = element_text(hjust = 0.5), legend.title=element_blank())
+
+
+forwardsfigure <- ggarrange(A,B,C,D,E,I,G,H, ncol = 3, nrow = 4,  common.legend = TRUE, legend="bottom")
+
+annotate_figure(
+  forwardsfigure,
+  top = text_grob("Distribution of Offensive Player Attributes",face = "bold", size = 14), 
+  bottom = NULL,
+  left = NULL,
+  right = NULL,
+  fig.lab = "")
+```
+
+```{r, include= FALSE}
+par(mar=c(1,1,1,1))
+#Looking at boxplots to examine distributions 
+boxplot(FD$Stamina, main="Stamina")
+boxplot(FD$LongShots, main="Long Shots")
+boxplot(FD$StandingTackle, main="Standing Tackle")
+boxplot(FD$Height, main="Height")
+boxplot(FD$Volleys, main="Volleys")
+boxplot(FD$Strength, main="Strength")
+boxplot(FD$Jumping, main = "Jumping")
+boxplot(FD$Agility, main = "Agility")
+```
+
+```{r, include = FALSE}
+#numerical summaries of important offensive skills 
+summary(FD$Stamina)
+sd(FD$Stamina)
+summary(FD$LongShots)
+sd(FD$LongShots)
+summary(FD$StandingTackle)
+sd(FD$StandingTackle)
+summary(FD$Height)
+sd(FD$Height)
+summary(FD$Volleys)
+sd(FD$Volleys)
+summary(FD$Strength)
+sd(FD$Strength)
+summary(FD$Jumping)
+sd(FD$Jumping)
+summary(FD$Agility)
+sd(FD$Agility)
+
+```
+
+```{r, include= FALSE }
+pairs(~Stamina+LongShots+StandingTackle+Height+Volleys+Strength+Jumping+Agility, data = FD)
+FD1 <- FD %>% select(Stamina,LongShots,StandingTackle,Height,Volleys,Strength,Jumping,Agility)
+J <- cor(FD1)
+corrplot(J)
+```
+
+```{r, include = FALSE}
+chart.Correlation(FD1, histogram=TRUE, pch=19)
+```
+
+The highest correlation we observed for this subset was between Long Shots and Volleys (0.72), while the lowest correlation was between Standing Tackle and Jumping (-0.0015). Out of all the variables, Volley, Strength, and Agility all seemed to have fairly high correlations with other variables. Height and Standing Tackle generally had the least correlation with the other variables. At the same time, we observe a few negative correlations involving either Agility or Standing Tackle.
+
+Based on the histograms, each of the variables were unimodal and normal or close to it. However, we noticed that Standing Tackle is skewed to the right and Strength has a slight left skew. Except for Standing Tackle, most players are in the “good” range for all variables.
+
+Strength has the highest spread, with a standard deviation of just over 13 and a mean of 66.26
+All variables have a mean in the high 50’s to low 70’s with a standard deviation around 10, once again except for Standing Tackle.
+
+
+# Midfielders
+
+```{r, include= FALSE }
+#addding Skill Rating Categories
+Mids$interceptgroup = ifelse(Mids$Interceptions < 40, "Very Poor", ifelse(Mids$Interceptions < 50, "Poor", ifelse(Mids$Interceptions < 70, "Fair", ifelse(Mids$Interceptions <80, "Good" , ifelse(Mids$Interceptions < 90,"Very Good", "Excellent")))))
+                            
+Mids$Stangroup = ifelse(Mids$StandingTackle < 40, "Very Poor", ifelse(Mids$StandingTackle < 50, "Poor", ifelse(Mids$StandingTackle < 70, "Fair", ifelse(Mids$StandingTackle <80, "Good" , ifelse(Mids$StandingTackle < 90,"Very Good", "Excellent")))))       
+
+Mids$ballcont = ifelse(Mids$BallControl < 40, "Very Poor", ifelse(Mids$BallControl < 50, "Poor", ifelse(Mids$BallControl < 70, "Fair", ifelse(Mids$BallControl <80, "Good" , ifelse(Mids$BallControl < 90,"Very Good", "Excellent"))))) 
+
+Mids$Reactgroup = ifelse(Mids$Reactions < 40, "Very Poor", ifelse(Mids$Reactions < 50, "Poor", ifelse(Mids$Reactions < 70, "Fair", ifelse(Mids$Reactions <80, "Good" , ifelse(Mids$Reactions < 90,"Very Good", "Excellent"))))) 
+
+Mids$positioning = ifelse(Mids$Positioning < 40, "Very Poor", ifelse(Mids$Positioning < 50, "Poor", ifelse(Mids$Positioning < 70, "Fair", ifelse(Mids$Positioning <80, "Good" , ifelse(Mids$Positioning < 90,"Very Good", "Excellent"))))) 
+
+Mids$stamina = ifelse(Mids$Stamina < 40, "Very Poor", ifelse(Mids$Stamina < 50, "Poor", ifelse(Mids$Stamina < 70, "Fair", ifelse(Mids$Stamina <80, "Good" , ifelse(Mids$Stamina < 90,"Very Good", "Excellent"))))) 
+
+Mids$Crossgroup = ifelse(Mids$Crossing < 40, "Very Poor", ifelse(Mids$Crossing< 50, "Poor", ifelse(Mids$Crossing < 70, "Fair", ifelse(Mids$Crossing <80, "Good" , ifelse(Mids$Crossing < 90,"Very Good", "Excellent"))))) 
+
+Mids$sprintspeed = ifelse(Mids$SprintSpeed< 40, "Very Poor", ifelse(Mids$SprintSpeed < 50, "Poor", ifelse(Mids$SprintSpeed < 70, "Fair", ifelse(Mids$SprintSpeed <80, "Good" , ifelse(Mids$SprintSpeed < 90,"Very Good", "Excellent"))))) 
+
+Mids$Dribbgroup = ifelse(Mids$Dribbling < 40, "Very Poor", ifelse(Mids$Dribbling < 50, "Poor", ifelse(Mids$Dribbling < 70, "Fair", ifelse(Mids$Dribbling  <80, "Good" , ifelse(Mids$Dribbling  < 90,"Very Good", "Excellent"))))) 
+```
+
+
+
+```{r, include= FALSE }
+a_mid<- ggplot(Mids, aes(x=Interceptions, fill = interceptgroup)) + geom_histogram(binwidth=1) + ggtitle("Interceptions") +
+  scale_fill_manual(values = c("Very Poor" = "red4",
+                                "Poor" = "red",
+                                "Fair" = "orange2", 
+                                "Good" ="yellow", 
+                                "Very Good" = "green2", 
+                               "Excellent" = "green4"
+                               )) +  labs(fill='Rating Range') + xlim(0, 100)
+
+b_mid<-ggplot(Mids, aes(x=StandingTackle, fill = Stangroup)) + geom_histogram(binwidth=1) + ggtitle("Standing Tackle") +
+  scale_fill_manual(values = c("Very Poor" = "red4",
+                                "Poor" = "red",
+                                "Fair" = "orange2", 
+                                "Good" ="yellow", 
+                                "Very Good" = "green2", 
+                               "Excellent" = "green4"
+                               )) +  labs(fill='Rating Range') + xlim(0, 100)
+
+c_mid<-ggplot(Mids, aes(x=BallControl, fill = ballcont)) + geom_histogram(binwidth=1) + ggtitle("Ball Control") +
+  scale_fill_manual(values = c("Very Poor" = "red4",
+                                "Poor" = "red",
+                                "Fair" = "orange2", 
+                                "Good" ="yellow", 
+                                "Very Good" = "green2", 
+                               "Excellent" = "green4"
+                               )) +  labs(fill='Rating Range') + xlim(0, 100)
+
+
+d_mid<-ggplot(Mids, aes(x=Reactions, fill = Reactgroup)) + geom_histogram(binwidth=1) + ggtitle("Reactions") +
+  scale_fill_manual(values = c("Very Poor" = "red4",
+                                "Poor" = "red",
+                                "Fair" = "orange2", 
+                                "Good" ="yellow", 
+                                "Very Good" = "green2", 
+                               "Excellent" = "green4"
+                               )) +  labs(fill='Rating Range') + xlim(0, 100)
+
+
+e_mid<-ggplot(Mids, aes(x=Positioning, fill = positioning)) + geom_histogram(binwidth=1) + ggtitle("Positioning") +
+  scale_fill_manual(values = c("Very Poor" = "red4",
+                                "Poor" = "red",
+                                "Fair" = "orange2", 
+                                "Good" ="yellow", 
+                                "Very Good" = "green2", 
+                               "Excellent" = "green4"
+                               )) +  labs(fill='Rating Range') + xlim(0, 100)
+
+f_mid <-ggplot(Mids, aes(x=Stamina, fill = stamina)) + geom_histogram(binwidth=1) + ggtitle("Stamina") +
+  scale_fill_manual(values = c("Very Poor" = "red4",
+                                "Poor" = "red",
+                                "Fair" = "orange2", 
+                                "Good" ="yellow", 
+                                "Very Good" = "green2", 
+                               "Excellent" = "green4"
+                               )) +  labs(fill='Rating Range') + xlim(0, 100)
+
+  
+g_mid<-ggplot(Mids, aes(x=SprintSpeed, fill = sprintspeed)) + geom_histogram(binwidth=1) + ggtitle("SprintSpeed") +
+  scale_fill_manual(values = c("Very Poor" = "red4",
+                                "Poor" = "red",
+                                "Fair" = "orange2", 
+                                "Good" ="yellow", 
+                                "Very Good" = "green2", 
+                               "Excellent" = "green4"
+                               )) +  labs(fill='Rating Range') + xlim(0, 100)
+
+  
+h_mid<-ggplot(Mids, aes(x=Crossing, fill = Crossgroup)) + geom_histogram(binwidth=1) + ggtitle("Crossing") +
+  scale_fill_manual(values = c("Very Poor" = "red4",
+                                "Poor" = "red",
+                                "Fair" = "orange2", 
+                                "Good" ="yellow", 
+                                "Very Good" = "green2", 
+                               "Excellent" = "green4"
+                               )) +  labs(fill='Rating Range') + xlim(0, 100)
+
+
+i_mid<-ggplot(Mids, aes(x=Dribbling, fill = Dribbgroup)) + geom_histogram(binwidth=1) + ggtitle("Dribbling") +
+  scale_fill_manual(values = c("Very Poor" = "red4",
+                                "Poor" = "red",
+                                "Fair" = "orange2", 
+                                "Good" ="yellow", 
+                                "Very Good" = "green2", 
+                               "Excellent" = "green4"
+                               )) +  labs(fill='Rating Range') + xlim(0, 100)
+
+```
+
+
+
+```{r, include= FALSE }
+#Looking at boxplots to examine distributions 
+boxplot(Mids$StandingTackle, main="Standing Tackle")
+boxplot(Mids$Interceptions, main="Interceptions")
+boxplot(Mids$BallControl, main="BallControl")
+boxplot(Mids$Positioning, main="Positioning")
+boxplot(Mids$Reactions, main="Reactions")
+boxplot(Mids$Stamina, main="Stamina")
+boxplot(Mids$Crossing, main="Crossing")
+boxplot(Mids$SprintSpeed, main = "Sprint Speed")
+```
+
+
+
+```{r, include= FALSE }
+#numerical summaries of important midfield skills 
+summary(Mids$StandingTackle)
+sd(Mids$StandingTackle)
+summary(Mids$Interceptions)
+sd(Mids$Interceptions)
+summary(Mids$BallControl)
+sd(Mids$BallControl)
+summary(Mids$Positioning)
+sd(Mids$Positioning)
+summary(Mids$Reactions)
+sd(Mids$Reactions)
+summary(Mids$Stamina)
+sd(Mids$Stamina)
+summary(Mids$Crossing)
+sd(Mids$Crossing)
+summary(Mids$SprintSpeed)
+sd(Mids$SprintSpeed)
+```
+
+
+
+```{r,  include = FALSE}
+library(ggpubr)
+mids_figure <- ggarrange(a_mid, b_mid,c_mid, d_mid,e_mid,f_mid,g_mid,h_mid,i_mid, ncol = 3, nrow = 4,  common.legend = TRUE, legend="bottom")
+
+annotate_figure(
+  mids_figure,
+  top = text_grob("Distribution of Midfielder Attributes",face = "bold", size = 14), 
+  fig.lab = "")
+```
+
+
+
+```{r, include = FALSE}
+MidsAttr<- subset(Mids, select = c("Overall", "BallControl", "StandingTackle", "Reactions", "Interceptions", "Crossing","Dribbling","SprintSpeed", "Stamina", "Positioning"))
+
+chart.Correlation(MidsAttr[,2:9], histogram=TRUE, pch=19)
+```
+
+The highest positive correlation is between Standing Tackle and Interceptions (.88), while the lowest correlation is between Standing Tackle and Crossing (-0.033). We also noticed that this subset includes negative correlations between variables like Standing Tackle and Sprint Speed (-0.41). This makes some sense because midfielders are more versatile players so they may need a wider variety of skill sets to successfully play the position. Overall, stamina has low correlation with other variables. 
+
+Most of the player attributes are unimodal, and nearly normal with centers between 49 and 69. Interceptions and Standing Tackle resemble a more uniform distribution. Most of the players are in the fair and good range for each attribute. Standing Tackle has the largest spread (Range: 80, SD: 16.39). Interceptions and Standing Tackle have the greatest variability compared to other attributes.
+
+
+# Defenders
+
+```{r, echo = FALSE}
+#choosing which variables to include
+BacksMainAttr<- subset(Backs, select = c("Overall","Age", "Weight", "Height",  "Interceptions", "StandingTackle", "SlidingTackle", "Reactions", "ShortPassing", "Marking","BallControl", "Aggression", "Crossing", "HeadingAccuracy", "SprintSpeed", "Composure"))
+
+suppressMessages(suppressWarnings(library(corrplot)))
+library("PerformanceAnalytics")
+chart.Correlation(BacksMainAttr[,5:16], histogram=TRUE, pch=19)
+```
+
+
+```{r,  include= FALSE }
+#creating rating group
+Backs$interceptgroup = ifelse(Backs$Interceptions < 40, "Very Poor", ifelse(Backs$Interceptions < 50, "Poor", ifelse(Backs$Interceptions < 70, "Fair", ifelse(Backs$Interceptions <80, "Good" , ifelse(Backs$Interceptions < 90,"Very Good", "Excellent")))))
+                            
+Backs$Stangroup = ifelse(Backs$StandingTackle < 40, "Very Poor", ifelse(Backs$StandingTackle < 50, "Poor", ifelse(Backs$StandingTackle < 70, "Fair", ifelse(Backs$StandingTackle <80, "Good" , ifelse(Backs$StandingTackle < 90,"Very Good", "Excellent")))))       
+
+Backs$Slidgroup = ifelse(Backs$SlidingTackle < 40, "Very Poor", ifelse(Backs$SlidingTackle < 50, "Poor", ifelse(Backs$SlidingTackle < 70, "Fair", ifelse(Backs$SlidingTackle <80, "Good" , ifelse(Backs$SlidingTackle < 90,"Very Good", "Excellent"))))) 
+
+Backs$Reactgroup = ifelse(Backs$Reactions < 40, "Very Poor", ifelse(Backs$Reactions < 50, "Poor", ifelse(Backs$Reactions < 70, "Fair", ifelse(Backs$Reactions <80, "Good" , ifelse(Backs$Reactions < 90,"Very Good", "Excellent"))))) 
+
+Backs$ShortPassgroup = ifelse(Backs$ShortPassing < 40, "Very Poor", ifelse(Backs$ShortPassing < 50, "Poor", ifelse(Backs$ShortPassing < 70, "Fair", ifelse(Backs$ShortPassing <80, "Good" , ifelse(Backs$ShortPassing < 90,"Very Good", "Excellent"))))) 
+
+Backs$Markinggroup = ifelse(Backs$Marking < 40, "Very Poor", ifelse(Backs$Marking < 50, "Poor", ifelse(Backs$Marking < 70, "Fair", ifelse(Backs$Marking <80, "Good" , ifelse(Backs$Marking < 90,"Very Good", "Excellent"))))) 
+
+Backs$Ballcontgroup = ifelse(Backs$BallControl< 40, "Very Poor", ifelse(Backs$BallControl < 50, "Poor", ifelse(Backs$BallControl < 70, "Fair", ifelse(Backs$BallControl <80, "Good" , ifelse(Backs$BallControl < 90,"Very Good", "Excellent"))))) 
+
+Backs$Aggrgroup = ifelse(Backs$Aggression < 40, "Very Poor", ifelse(Backs$Aggression < 50, "Poor", ifelse(Backs$Aggression < 70, "Fair", ifelse(Backs$Aggression <80, "Good" , ifelse(Backs$Aggression < 90,"Very Good", "Excellent"))))) 
+
+Backs$Crossgroup = ifelse(Backs$Crossing < 40, "Very Poor", ifelse(Backs$Crossing< 50, "Poor", ifelse(Backs$Crossing < 70, "Fair", ifelse(Backs$Crossing <80, "Good" , ifelse(Backs$Crossing < 90,"Very Good", "Excellent"))))) 
+
+Backs$Headgroup = ifelse(Backs$HeadingAccuracy< 40, "Very Poor", ifelse(Backs$HeadingAccuracy < 50, "Poor", ifelse(Backs$HeadingAccuracy < 70, "Fair", ifelse(Backs$HeadingAccuracy <80, "Good" , ifelse(Backs$HeadingAccuracy < 90,"Very Good", "Excellent"))))) 
+
+Backs$Sprintgroup = ifelse(Backs$SprintSpeed < 40, "Very Poor", ifelse(Backs$SprintSpeed  < 50, "Poor", ifelse(Backs$SprintSpeed  < 70, "Fair", ifelse(Backs$SprintSpeed   <80, "Good" , ifelse(Backs$SprintSpeed   < 90,"Very Good", "Excellent"))))) 
+
+Backs$Compgroup = ifelse(Backs$Composure < 40, "Very Poor", ifelse(Backs$Composure< 50, "Poor", ifelse(Backs$Composure < 70, "Fair", ifelse(Backs$Composure <80, "Good" , ifelse(Backs$Composure < 90,"Very Good", "Excellent"))))) 
+```
+
+
+
+```{r, include= FALSE }
+#creating histograms
+a<- ggplot(Backs, aes(x=Interceptions, fill = interceptgroup)) + geom_histogram(binwidth=1) + ggtitle("Interceptions") +
+  scale_fill_manual(values = c("Very Poor" = "red4",
+                                "Poor" = "red",
+                                "Fair" = "orange2", 
+                                "Good" ="yellow", 
+                                "Very Good" = "green2", 
+                               "Excellent" = "green4"
+                               )) +  labs(fill='Rating Range') + xlim(0, 100)
+
+b<-ggplot(Backs, aes(x=StandingTackle, fill = Stangroup)) + geom_histogram(binwidth=1) + ggtitle("Standing Tackle") +
+  scale_fill_manual(values = c("Very Poor" = "red4",
+                                "Poor" = "red",
+                                "Fair" = "orange2", 
+                                "Good" ="yellow", 
+                                "Very Good" = "green2", 
+                               "Excellent" = "green4"
+                               )) +  labs(fill='Rating Range') + xlim(0, 100)
+
+c<-ggplot(Backs, aes(x=SlidingTackle, fill = Slidgroup)) + geom_histogram(binwidth=1) + ggtitle("Sliding Tackle") +
+  scale_fill_manual(values = c("Very Poor" = "red4",
+                                "Poor" = "red",
+                                "Fair" = "orange2", 
+                                "Good" ="yellow", 
+                                "Very Good" = "green2", 
+                               "Excellent" = "green4"
+                               )) +  labs(fill='Rating Range') + xlim(0, 100)
+
+
+d<-ggplot(Backs, aes(x=Reactions, fill = Reactgroup)) + geom_histogram(binwidth=1) + ggtitle("Reactions") +
+  scale_fill_manual(values = c("Very Poor" = "red4",
+                                "Poor" = "red",
+                                "Fair" = "orange2", 
+                                "Good" ="yellow", 
+                                "Very Good" = "green2", 
+                               "Excellent" = "green4"
+                               )) +  labs(fill='Rating Range') + xlim(0, 100)
+
+e<-ggplot(Backs, aes(x=ShortPassing, fill = ShortPassgroup)) + geom_histogram(binwidth=1) + ggtitle("Short Passes") +
+  scale_fill_manual(values = c("Very Poor" = "red4",
+                                "Poor" = "red",
+                                "Fair" = "orange2", 
+                                "Good" ="yellow", 
+                                "Very Good" = "green2", 
+                               "Excellent" = "green4"
+                               )) +  labs(fill='Rating Range') + xlim(0, 100)
+
+f<-ggplot(Backs, aes(x=Marking, fill =Markinggroup)) + geom_histogram(binwidth=1) + ggtitle("Marking") +
+  scale_fill_manual(values = c("Very Poor" = "red4",
+                                "Poor" = "red",
+                                "Fair" = "orange2", 
+                                "Good" ="yellow", 
+                                "Very Good" = "green2", 
+                               "Excellent" = "green4"
+                               )) +  labs(fill='Rating Range') + xlim(0, 100)
+
+g <-ggplot(Backs, aes(x=BallControl, fill = Ballcontgroup)) + geom_histogram(binwidth=1) + ggtitle("Ball Control") +
+  scale_fill_manual(values = c("Very Poor" = "red4",
+                                "Poor" = "red",
+                                "Fair" = "orange2", 
+                                "Good" ="yellow", 
+                                "Very Good" = "green2", 
+                               "Excellent" = "green4"
+                               )) +  labs(fill='Rating Range') + xlim(0, 100)
+
+  
+h<-ggplot(Backs, aes(x=Aggression, fill =Aggrgroup)) + geom_histogram(binwidth=1) + ggtitle("Aggression") +
+  scale_fill_manual(values = c("Very Poor" = "red4",
+                                "Poor" = "red",
+                                "Fair" = "orange2", 
+                                "Good" ="yellow", 
+                                "Very Good" = "green2", 
+                               "Excellent" = "green4"
+                               )) +  labs(fill='Rating Range') + xlim(0, 100)
+
+  
+i<-ggplot(Backs, aes(x=Crossing, fill =Crossgroup)) + geom_histogram(binwidth=1) + ggtitle("Crossing") +
+  scale_fill_manual(values = c("Very Poor" = "red4",
+                                "Poor" = "red",
+                                "Fair" = "orange2", 
+                                "Good" ="yellow", 
+                                "Very Good" = "green2", 
+                               "Excellent" = "green4"
+                               )) +  labs(fill='Rating Range') + xlim(0, 100)
+
+j<-ggplot(Backs, aes(x=HeadingAccuracy, fill = Headgroup)) + geom_histogram(binwidth=1) + ggtitle("Heading Accuracy") +
+  scale_fill_manual(values = c("Very Poor" = "red4",
+                                "Poor" = "red",
+                                "Fair" = "orange2", 
+                                "Good" ="yellow", 
+                                "Very Good" = "green2", 
+                               "Excellent" = "green4"
+                               )) +  labs(fill='Rating Range') + xlim(0, 100)
+
+k<-ggplot(Backs, aes(x=SprintSpeed, fill = Sprintgroup)) + geom_histogram(binwidth=1) + 
+  ggtitle("Sprint Speed") +
+  scale_fill_manual(values = c("Very Poor" = "red4",
+                                "Poor" = "red",
+                                "Fair" = "orange2", 
+                                "Good" ="yellow", 
+                                "Very Good" = "green2", 
+                               "Excellent" = "green4"
+                               )) +  labs(fill='Rating Range') + xlim(0, 100)
+
+l<-ggplot(Backs, aes(x=Composure, fill = Compgroup)) + geom_histogram(binwidth=1) + 
+  ggtitle("Composure") +
+  scale_fill_manual(values = c("Very Poor" = "red4",
+                                "Poor" = "red",
+                                "Fair" = "orange2", 
+                                "Good" ="yellow", 
+                                "Very Good" = "green2", 
+                               "Excellent" = "green4")) +  labs(fill='Rating Range') + xlim(0, 100)
+```
+
+```{r,  echo = FALSE, warning=FALSE}
+library(ggpubr)
+figure <- ggarrange(a, b,c, d,e,f,g,h,i,j,k,l, ncol = 3, nrow = 4,  common.legend = TRUE, legend="bottom")
+
+annotate_figure(
+  figure,
+  top = text_grob("Distribution of Defensive Player Attributes",face = "bold", size = 14), 
+  bottom = NULL,
+  left = NULL,
+  right = NULL,
+  fig.lab = "")
+```
+
+```{r, include= FALSE }
+#Looking at boxplots to examine distributions 
+boxplot(Backs$Interceptions, main="Interceptions")
+boxplot(Backs$StandingTackle, main="Standing Tackle")
+boxplot(Backs$SlidingTackle, main="Sliding Tackle")
+boxplot(Backs$Reactions, main="Reactions")
+boxplot(Backs$ShortPassing, main="ShortPassing")
+boxplot(Backs$Marking, main="Marking")
+boxplot(Backs$BallControl, main="Ball Control")
+boxplot(Backs$Aggression, main = "Aggression")
+boxplot(Backs$Crossing, main = "Crossing")
+boxplot(Backs$HeadingAccuracy, main = "Heading Accuracy")
+boxplot(Backs$SprintSpeed, main = "Sprint Speeed")
+boxplot(Backs$Composure, main = "Composure")
+```
+
+
+
+```{r, include= FALSE }
+#numerical summaries of important defensive skills 
+summary(Backs$Interceptions)
+sd(Backs$Interceptions)
+summary(Backs$StandingTackle)
+sd(Backs$StandingTackle)
+summary(Backs$SlidingTackle)
+sd(Backs$SlidingTackle)
+summary(Backs$Reactions)
+sd(Backs$Reactions)
+summary(Backs$ShortPassing)
+sd(Backs$ShortPassing)
+summary(Backs$Marking)
+sd(Backs$Marking)
+summary(Backs$BallControl)
+sd(Backs$BallControl)
+summary(Backs$Crossing)
+sd(Backs$Crossing)
+summary(Backs$HeadingAccuracy)
+sd(Backs$HeadingAccuracy)
+summary(Backs$SprintSpeed)
+sd(Backs$SprintSpeed)
+summary(Backs$Composure)
+sd(Backs$Composure)
+
+```
+
+Many of the mental and physical attributes of players are positively correlated. This makes sense because we would want a group of well rounded professional defenders to not only make it into the Premier League by being good at slide tackles and crossing. The highest correlation is between Slide and standing tackles (0.90) and the weakest correlation is between Marking and Sprint Speed (-0.012).
+
+Most of the player attributes are unimodal, and nearly normal with centers between 54 and 68. 
+Some interesting points are that Crossing has the largest spread (Range:80, SD: 16.2) with two separate peaks around 28 and 57, most likely a group of defenders that are not very good at accurately crossing the ball. Ball Control, Sprint Speed, Composure have the greatest variability among the remaining attributes. Unlike Midfielders, Standing Tackle has the smallest spread. 
+
+
+# Goalkeepers
+```{r, include= FALSE }
+GK <- GK %>%  mutate(Rating = ifelse(GKReflexes < 40, "Very Poor", ifelse(GKReflexes < 50, "Poor", ifelse(GKReflexes < 60, "Fair", ifelse(GKReflexes < 70, "Good", ifelse(GKReflexes < 80, "Good", ifelse(GKReflexes < 90, "Very Good", "Excellent"))))))) %>%  mutate(Rating1 = ifelse(GKPositioning < 40, "Very Poor", ifelse(GKPositioning < 50, "Poor", ifelse(GKPositioning < 60, "Fair", ifelse(GKPositioning < 70, "Good", ifelse(GKPositioning < 80, "Good", ifelse(GKPositioning < 90, "Very Good", "Excellent")))))))  %>%  mutate(Rating2 = ifelse(GKDiving < 40, "Very Poor", ifelse(GKDiving < 50, "Poor", ifelse(GKDiving < 60, "Fair", ifelse(GKDiving < 70, "Good", ifelse(GKDiving < 80, "Good", ifelse(GKDiving < 90, "Very Good", "Excellent"))))))) %>%  mutate(Rating3 = ifelse(GKHandling < 40, "Very Poor", ifelse(GKHandling < 50, "Poor", ifelse(GKHandling < 60, "Fair", ifelse(GKHandling < 70, "Good", ifelse(GKHandling < 80, "Good", ifelse(GKHandling < 90, "Very Good", "Excellent")))))))  %>%  mutate(Rating4 = ifelse(GKKicking < 40, "Very Poor", ifelse(GKKicking < 50, "Poor", ifelse(GKKicking < 60, "Fair", ifelse(GKKicking < 70, "Good", ifelse(GKKicking < 80, "Good", ifelse(GKKicking < 90, "Very Good", "Excellent")))))))  %>%  mutate(Rating5 = ifelse(Reactions < 40, "Very Poor", ifelse(Reactions < 50, "Poor", ifelse(Reactions < 60, "Fair", ifelse(Reactions < 70, "Good", ifelse(Reactions < 80, "Good", ifelse(Reactions < 90, "Very Good", "Excellent")))))) ) %>%  mutate(Rating6 = ifelse(Age < 20, "Less than 20", ifelse(Age < 26, "20-25", ifelse(Age < 31, "26-30", ifelse(Age < 36, "31-35", ifelse(Age < 41, "36-40", ifelse(Age < 46, "41-45", "46-50")))))))  %>%  mutate(Rating7 = ifelse(LongShots < 40, "Very Poor", ifelse(LongShots < 50, "Poor", ifelse(LongShots < 60, "Fair", ifelse(LongShots < 70, "Good", ifelse(LongShots < 80, "Good", ifelse(LongShots < 90, "Very Good", "Excellent"))))))) 
+
+
+A <-ggplot(GK, aes(x=GKReflexes, fill=Rating)) + 
+  geom_histogram(position="identity", alpha=.75, binwidth=1) + 
+  scale_x_continuous(lim=c(30,100)) + 
+  labs(title="Goal Keeper Reflexes") +
+  theme(plot.title = element_text(hjust = 0.5))
+B <- ggplot(GK, aes(x=GKPositioning, fill=Rating1)) + 
+  geom_histogram(position="identity", alpha=.75, binwidth=1) + 
+scale_x_continuous(lim=c(30,100)) + 
+  labs(title="Goal Keeper Positioning") +
+  theme(plot.title = element_text(hjust = 0.5))
+C <- ggplot(GK, aes(x=GKDiving, fill=Rating2)) + 
+  geom_histogram(position="identity", alpha=.75, binwidth=1) + 
+  scale_x_continuous(lim=c(30,100)) + 
+  labs(title="Goal Keeper Diving") +
+  theme(plot.title = element_text(hjust = 0.5))
+D <- ggplot(GK, aes(x=GKHandling, fill=Rating3)) + 
+  geom_histogram(position="identity", alpha=.75, binwidth=1) + 
+  scale_x_continuous(lim=c(30,100)) + 
+  labs(title="Goal Keeper Handling") +
+  theme(plot.title = element_text(hjust = 0.5))
+E <- ggplot(GK, aes(x=GKKicking, fill=Rating4)) + 
+  geom_histogram(position="identity", alpha=.75, binwidth=1) + 
+  scale_x_continuous(lim=c(30,100)) + 
+  labs(title="Goal Keeper Kicking") +
+  theme(plot.title = element_text(hjust = 0.5))
+I <- ggplot(GK, aes(x=Reactions, fill=Rating5)) + 
+  geom_histogram(position="identity", alpha=.75, binwidth=1) + 
+  scale_x_continuous(lim=c(30,100)) + 
+  labs(title="Goal Keeper Reactions") +
+  theme(plot.title = element_text(hjust = 0.5))
+G <- ggplot(GK, aes(x=Age, fill=Rating6)) +
+  geom_histogram(position="identity", alpha=.75, binwidth=1) + 
+  scale_x_continuous(lim=c(0,50)) + 
+  labs(title="Goal Keeper Age") +
+  theme(plot.title = element_text(hjust = 0.5), legend.title=element_blank())
+H <- ggplot(GK, aes(x=LongShots, fill=Rating7)) + 
+  geom_histogram(position="identity", alpha=1, binwidth=1) + 
+  scale_x_continuous(lim=c(0,50)) + 
+  labs(title="Goal Keeper Longshots") +
+  theme(plot.title = element_text(hjust = 0.5), legend.title=element_blank())
+
+
+
+boxplot(GK$GKReflexes, main="GK Reflexes")
+boxplot(GK$GKPositioning, main="GK Positioning")
+boxplot(GK$GKDiving, main="GK Diving")
+boxplot(GK$GKHandling, main="GK Handling")
+boxplot(GK$Reactions, main="GK Recations")
+boxplot(GK$GKKicking, main="GK Kicking")
+boxplot(GK$Age, main = "GK Age")
+boxplot(GK$LongShots, main = "GK Longshots")
+
+
+pairs(~GKReflexes+GKPositioning+GKDiving+GKHandling+Reactions+GKKicking+Age+LongShots, data=GK)
+GK1 <- GK %>% select(GKReflexes,GKPositioning,GKDiving,GKHandling,Reactions,GKKicking,Age,LongShots)
+G <- cor(GK1)
+corrplot(G)
+```
+
+
+
+```{r,  include = FALSE}
+figure <- ggarrange(A,B, C, D, E, I, G, H, ncol = 3, nrow = 3,  common.legend = TRUE, legend="bottom")
+
+annotate_figure(
+  figure,
+  top = text_grob("Distribution of Goal Keeper Player Attributes",face = "bold", size = 14), 
+  bottom = NULL,
+  left = NULL,
+  right = NULL,
+  fig.lab = "")
+chart.Correlation(GK1, histogram=TRUE, pch=19)
+```
+
+
+The highest correlation is between Goalkeeper Diving and Goalkeeper reflexes (0.90), which makes sense because you need good reflexes in order to dive for the ball at the right time. The lowest correlation is between Goalkeepers’ Long Shot rating and Age (0.26) and Long Shot has very low correlation, overall, with all other attributes.
+
+All goalkeeper attributes are fairly unimodal and centered between 58 and 65. We notice that most goalkeepers are between the ages of 20 to 25, and its plot is slightly right skewed. It is interesting that goal keeper’s reaction rating has the biggest spread. The Reflexes plot has the highest centered distribution (66.1), since goalkeepers need to have high reflexes.  
+
+\newpage
+
+## Results
+
+*Analysis*: We learned that several variables are significant in predicting a defender’s overall rating, including interceptions, standing tackle, and marking.  This meant that all skills were not valued equally for defenders.  It also became extremely clear early on in our exploratory data analysis that the different soccer positions valued different abilities, which makes quite a bit of sense.  Different positions have different roles on the field that require unique skill sets. Thus, we could reject the portion of our null hypothesis that stated that skills required do not vary across positions.  Thus, we did not have to generate new hypotheses, but could clearly reject our original null hypothesis on both points that it made.
+
+*Principal Components*: 
+```{r, include = FALSE}
+Backs$InternationalReputation <- Backs$`International Reputation`
+```
+
+```{r, include = FALSE}
+BacksMainAttr<- subset(Backs, select = c("Overall",  "Age", "Height", "Weight", "Interceptions", "StandingTackle", "SlidingTackle", "Reactions", "ShortPassing", "Marking", "BallControl", "Aggression", "Crossing", "HeadingAccuracy", "SprintSpeed", "Composure", "InternationalReputation") )
+```
+
+```{r, include = FALSE}
+p1=prcomp(BacksMainAttr[2:17],scale=T )
+p1
+```
+
+When we took a look at principal components, we found that PC1 was more or less an average of each of the players stats, while PC2 had appeared to have a positive correlation with skills associated with defender specific abilities such as morking and interceptions but had a negative correlation with more general soccer skills, such as ball control, passing, and reactions.  
+
+```{r, echo = FALSE, warning = FALSE}
+PCplot1<- fviz_pca_ind(p1,
+             col.ind = BacksMainAttr$Overall, # Color by the quality of representation
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = FALSE,    # Don't avoid text overlapping
+             pointsize=0.5,
+             labelsize= 2
+             )
+
+PCplot2<- fviz_pca_var(p1,
+             col.var = "contrib", # Color by contributions to the PC
+             repel = TRUE, # Avoid text overlapping
+              labelsize= 2
+             )
+
+PCplot3<- fviz_eig(p1)
+
+
+ggarrange(PCplot1, PCplot2, PCplot3, ncol = 2, nrow =2)
+
+```
+
+![Overall vs PC2](PC2.png){width=50%}
+
+However, when we plotted Overall rating versus PC2, we could not discern an obvious or meaningful relationship. We decided not to go with principal components for the same reason principal components are not extremely common: they are exceedingly difficult to interpret.  While PC1 made a fair deal of sense, PC2 would be nearly impossible to explain to a FIFA fan who did not have knowledge of statistics.  Also, with our two linear models we got R2 values around 0.95, and with such a high percentage of data explained by a more easily explainable model, there is no reason to use a more convoluted model that only explains roughly 70% of the variation in the data.
+
+
+
+\newpage
+
+
+*Models and Summaries*: We constructed four different models to capture the relationship between player attributes and overall rating for defenders in FIFA19. We first fit a minimum BIC Backwards Stepwise Regression from all player attributes of interest and then expanded this into a more complex model, which minimized BIC with all of the player attributes of interest and their interaction terms. Next, we took the same variables of interest and fit a lasso regression model with 20 parameters and finally fit a double layer neural network. 
+
+Across all these models the “variables of interest” are the top 12 player skills determined to be important by the regression trees along with physical characteristics such as age, weight, and height and international reputation since we know from domain knowledge that this is a part of the overall rating algorithm.
+
+# Multiple Linear Regression: 
+
+First, we built a model with all of these variables and ran a backwards stepwise regression using minimum AIC and BIC. Interesting parts of the output of the model that minimizes BIC are shown below. 
+
+
+```{r, include = FALSE}
+lm1<- lm(Overall~., data = BacksMainAttr)
+lmstep1 <- step(lm1,k=log(4556),trace=FALSE)
+lmstep2 <- step(lm1,trace=FALSE)
+```
+
+```{r, include = FALSE}
+summary(lm1)
+summary(lmstep2)
+```
+
+```{r, echo = FALSE}
+summary(lmstep1 )
+```
+
+The minimum AIC and minimum BIC model were identical and include all the variables we started with, except height. 
+
+In order to decide on a model, we decided to perform cross validation on these three preliminary models (all predictors, min AIC, min BIC) to see which which one tends to have the highest $R^2$ and lowest RMSE on the test set. 
+
+```{r, include = FALSE}
+SSE=matrix(0,100,3)
+R2=matrix(0,100,3)
+set.seed(12345)
+
+for (i in 1:100){
+  BacksMainAttr$Train=shuffle(c(rep(0,3910),rep(1,1956)))
+  train = subset(BacksMainAttr,Train==0)
+  test = subset(BacksMainAttr,Train==1)
+  ytest = test$Overall
+
+  lm.t1=lm(formula(lmstep1),data=train)
+  lm.t2=lm(formula(lmstep2),data=train)
+  lm.t3=lm(formula(lm1),data=train)
+
+  pred=predict(lm.t1,newdata=test)
+  res=ytest-pred
+  SSE[i,1]=sum(res^2)
+  R2[i,1]=cor(ytest,pred)^2
+
+  pred=predict(lm.t2,newdata=test)
+  res=ytest-pred
+  SSE[i,2]=sum(res^2)
+  R2[i,2]=cor(ytest,pred)^2
+
+  pred=predict(lm.t3,newdata=test)
+  res=ytest-pred
+  SSE[i,3]=sum(res^2)
+  R2[i,3]=cor(ytest,pred)^2
+}
+
+apply(SSE,2,mean)
+
+apply(R2,2,mean)
+```
+
+Cross validation indicates that the minimum BIC model tends to perform best on test sets because it has on average, it fit the model with the lowest SEE and highest $R^2$ on 100 differnt randomly selected test sets. 
+
+JMP has some interesting analysis features in the Fit Model dialog so went into JMP and fit a mimimum BIC model with the same variables to look at effect summaries and other interesting visualizations. In our more simple model, the model without the interaction terms, we learned that each 1 point increase in standing tackle, marking, and interceptions had the greatest influence in determining a player’s overall rating. 
+
+![Scaled Estimates](ScaledEstimates.png)
+
+The parameter estimates are highly dependent on the scale of their different corresponding factors (comparing height in inches and rating (1 to 99) is not very helpful) so scaled estimates allow us to provide a scale invariant means to examine parameter estimates. A large number of other variables, there being 15 in total, were significant, with none, including the ones previously mentioned, having estimated slope coefficients above 0.4.  
+
+The $R^2$ and adjusted $R^2$ are both round to 0.95, which is very good, but makes sense considering the game literally used our predictors to determine our response variable. The root mean squared error is 1.38, which is fairly low considering our response variable can be any integer under 99.However, it is important to note that overall rating must be an integer, so small changes in RMSE are effectively worthless.
+
+
+```{r, echo = FALSE, fig.height=3, fig.width=3}
+with(lmstep1, scatter.smooth(residuals~ fitted.values, xlab = "Predicted Values", ylab = "Residuals", main = "Residuals vs Predicted Values", pch=19))
+
+hist(lmstep1$residuals, main = "Distribution of residuals",  xlab = "Predicted Values")
+
+qqnorm(lmstep1$residuals)
+qqline(lmstep1$residuals)
+```
+
+The assumptions and conditions for a linear model do not appear to be fully satisfied. The residuals are fairly heteroskedastic so nonconstant variance is satisfied.The horizontal smoother across the predicted vs residuals indicates decent linearity. Our main concern here is that the errors are skewed to the right which means we are making a lot of predictions are too high with this model.
+We also see that the qq plot seems to be somewhat linear, although imperfect towards the right end.
+
+The next step was to make the model more robust and see whether the effect of certain player attributes depend on the level of other skills. We created a model with all of the variables of interest and their interaction terms and did a minimum BIC stepwise regression to build a more complex model. 
+
+```{r, include= FALSE}
+createformula <- function(y, vars) {
+form <- paste(y, "~")
+for (i in 1:length(vars)) {
+for (j in i:length(vars)) {
+form <- paste(form, "+", vars[i], "*", vars[j])
+}
+}
+return(form)
+}
+```
+
+
+
+```{r, include= FALSE}
+myformula=createformula(y="Overall",vars=all.vars(rhs(formula(lm1))))
+lm.big=lm(myformula,data=BacksMainAttr) #all interactions
+lm.stepbig=step(lm.big,trace=0,k=log(5866))  #minimum BIC model with interactions
+summary(lm.stepbig)
+```
+
+```{r, include=FALSE}
+summary(lm.stepbig)
+```
+
+
+![Criterion History](CriterionHistory.png)
+
+![Big Summary](BigSummary.png)
+
+The criterion history plot clearly indicates that BIC “imposes” a more severe penalty for adding more predictors, as it hits a minimum way before the AIC selection criteria. Our more complex model had more than three times the number of predictors of our more simple model, so where our simple model had a few predictors that clearly stood out, that was not the case for our complex model.  For example, an increase of one point for interceptions is associated with, on average, an increase of 0.125 in predicted overall rank. We found that a huge number of significant variables were interaction terms, which meant that how much any skill mattered in determining one’s overall rank varied greatly with the other skills that player possessed.  With 49 significant predictor variables, no variable or interact term particularly dominated in the final calculation for predicted overall rating.  While the RMSE did decrease from 1.38 to just over 1.0 going from our simpler to more complex model, as stated before, this change in RMSE means very little because our response variable is discrete.
+
+
+```{r, echo = FALSE, fig.height=3, fig.width=3}
+with(lm.stepbig, scatter.smooth(residuals~ fitted.values, xlab = "Predicted Values", ylab = "Residuals", main = "Residuals vs Predicted Values", pch=19, cex = 0.4,))
+
+hist(lm.stepbig$residuals, main = "Distribution of residuals",  xlab = "Predicted Values")
+
+qqnorm(lm.stepbig$residuals)
+qqline(lm.stepbig$residuals)
+```
+
+The assumptions for our larger model were roughly met.  As one can see, our residuals vs predicted plot shows no pattern meaning that there is a linear relationship between our predictors and our response.  The histogram of our residuals is roughly normally distributed (could definitely be better, but will count it as passing), so our residuals are normal.  Lastly, the qq plot shows a roughly linear pattern that means that the residuals are independent and so all in all I would say the assumptions of our residuals are met. This is an improvement from the diagnostics of our smaller model. 
+
+# Lasso Regression: 
+
+Our next step was to try to find a model that balanced accuracy and interpretability. Using Lasso Regression, we use biased regression estimates to reduce the  variance introduced by multicollinearity. By minimizing $PRSS=min(y - Xb)(y - Xb) + \lambda\sum{|bi|}$, we found that Lasso Regression reduces the model with all of the variables and interactions down to 57 parameters with a $\lambda$ penalty of shrinkage parameter of 6.28.
+
+![Original Lasso](OriginalLasso.png)
+
+However, we were interested in exploring how we could use lasso regression to come up with a model that does not necessarily have the highest R2, but explains a larger portion of the variability in overall rating than the smaller stepwise regression model with less parameters than the complex interaction model with 49 predictor variables. 
+
+![Adjusted Lasso](Lasso.png)
+
+We found that a lambda penalty of 165.71 resulted in a model with only 20 parameters with an R2 of 0.965 and RMSE of 1.2055. This model balances robustness and interpretability because it has a higher $R^2$ and lower RMSE than our previous smaller model, but it has less than half of the coefficients in the larger interaction model making it a more meaningful model to interpret. 
+
+![Lasso Variable Importance](LassoVarImp.png){width=50%}
+
+The most important variables in the model, which are Standing Tackle, Marking, Heading Accuracy, and Interceptions.
+
+$$\\[1in]$$
+
+
+We also fit a lasso with only the linear predictors and found that the lambda penalty was less than 1 ($\lambda$ = 0.01116 minimized our estimate and $\lambda$ = 0.10072 was the heuristic choice to produce a simpler model). 
+
+```{r, include = FALSE}
+x<-as.matrix(BacksMainAttr[,2:17])
+y <- as.numeric(BacksMainAttr$Overall)
+cv.glmnet( x,y)
+```
+
+```{r, echo = FALSE, fig.height = 5, fig.width = 7}
+#lasso without interactions 
+
+x<-as.matrix(BacksMainAttr[,2:17])
+y <- as.numeric(BacksMainAttr$Overall)
+
+model.lasso <- lars(x, y, type="lasso")
+lambda.lasso <- c(model.lasso$lambda,0)
+beta <- coef(model.lasso)
+
+colors <- rainbow(8)
+matplot(lambda.lasso, beta, xlim=c(400,-100), type="o", pch=20, xlab=expression(lambda), ylab=expression(hat(beta)), col=colors)
+text(rep(-0, 17), beta[17,], colnames(x), pos=4, col=colors)
+abline(h=0, lty=2)
+```
+
+```{r, include= FALSE}
+model.lasso
+```
+
+
+
+# Neural Network 
+
+The last model we attempted to fit was a neural network. In order to do so, we fit a two layer model with 4 nodes in the first layer and 8 nodes in the second layer (closest to the X’s). In the creation of this model we boosted with 3 models and performed 5 tours to come to a model. By minimizing SSE and the squares of the weights, we created a model that captures almost all of the variability in overall rating, as seen in the high R2 in the training and validation sets, but it is a black box and does not tell us a lot about the data. 
+
+```{r, include = FALSE}
+BacksModel<- subset(Backs, select = c("Overall",  "Age", "Height", "Weight", "Interceptions", "StandingTackle", "SlidingTackle", "Reactions", "ShortPassing", "Marking", "BallControl", "Aggression", "Crossing", "HeadingAccuracy", "SprintSpeed", "Composure", "InternationalReputation") )
+```
+
+
+```{r, include = FALSE}
+index <- sample(1:nrow(BacksModel),round(0.75*nrow(BacksModel)))
+train <- BacksModel[index,]
+test <- BacksModel[-index,]
+
+# Fitting linear model
+lm.fit <- glm(Overall~., data=train)
+
+pr.lm <- predict(lm.fit,test)
+MSE.lm <- sum((pr.lm - test$Overall)^2)/nrow(test)
+
+# Scaling
+maxs <- apply(BacksModel, 2, max)
+mins <- apply(BacksModel, 2, min)
+scaled <- as.data.frame(scale(BacksModel, center = mins, scale = maxs - mins))
+
+# Splitting
+train_ <- scaled[index,]
+test_ <- scaled[-index,]
+
+n <- names(train_)
+f <- as.formula(paste("Overall ~", paste(n[!n %in% "Overall"], collapse = " + ")))
+nn <- neuralnet(f,data=train_,hidden=c(8,4),linear.output=T)
+```
+
+
+```{r, echo= FALSE}
+plot(nn)
+```
+
+```{r,include = FALSE}
+# Predict
+pr.nn <- compute(nn,test_[,2:17])
+
+pr.nn_ <- pr.nn$net.result*(max(BacksModel$Overall)-min(BacksModel$Overall))+min(BacksModel$Overall)
+test.r <- (test_$Overall)*(max(BacksModel$Overall)-min(BacksModel$Overall))+min(BacksModel$Overall)
+
+# Calculating MSE
+MSE.nn <- sum((test.r - pr.nn_)^2)/nrow(test_)
+
+# Compare the two MSEs
+print(paste(MSE.lm,MSE.nn))
+
+# Plot predictions
+par(mfrow=c(1,2))
+```
+
+```{r, echo = FALSE, fig.width=3, fig.height = 4}
+plot(test$Overall,pr.nn_,col='pink',main='Neural Network Fit',pch=18,cex=0.7, xlab = "Observed Rating", ylab = "Predicted Rating")
+abline(0,1,lwd=2)
+legend('bottomright',legend='NN',pch=18,col='pink', bty='n')
+
+plot(test$Overall,pr.lm,col='skyblue',main='Linear Model Fit',pch=18, cex=0.7, xlab = "Observed Rating", ylab ="Predicted Rating")
+abline(0,1,lwd=2)
+legend('bottomright',legend='LM',pch=18,col='skyblue', bty='n', cex=.95)
+```
+
+The actual vs predicted plots shown above show the overall effectiveness of ours model. The neural network has extremely low variance and is quite accurate at predicting the overall rating of a player in the fifa video game. There are very few outliers and leverage points and the model clearly has a distinct positive linear pattern. 
+
+*Comparing Models*: To compare our models, we were interested in looking at which variables each model treated as the most important as well as their cross validation performance. In order to conduct such an analysis, we used Model Comparison on JMP to compare all four models on randomly selected training (Test = 0), test (Test = 1), and validation (Test = 2) sets all at once. 
+
+
+![Model Comparison](ModelComparison.png)
+
+
+ Unsurprisingly, the neural network had the best performance on all three data sets, but as mentioned previously, this model does not provide a lot of insights on the relationship between different player attributes and overall rating. All of the models had R2 values all within 0.2 for the training set but when we fit these models on the test and validation sets we started to see differences in how well they fit the data. The larger stepwise model with interaction performed the second best and the simple stepwise model had the lowest R2 and highest RASE for both sets. It is interesting to note that we use Root Average Squared Error(RASE) instead of RMSE in these analyses because there is no known unbiased estimator for neural networks. In the test set, the smallest model only accounted for 94.2% of the variability in overall rating, which in other contexts is an incredibly high R2, but in our analyses well below the performance of other models. With that being said, all four models had R2 values within 0.0436 of one another and RASE within 0.7042 so none of the models are clearly better or worse, it simply depends on how much the user of the model places on precision versus interpretability.  
+ 
+
+
+| Model                                  | Simple BIC                                                     | Complex BIC                                                          | Lasso                                                               | Neural Network                                                        |
+|----------------------------------------|----------------------------------------------------------------|----------------------------------------------------------------------|---------------------------------------------------------------------|-----------------------------------------------------------------------|
+| Top 5 Variables in order of importance | Standing Tackle Marking Interceptions Sliding Tackle Reactions | Sliding Tackle Standing Tackle Interceptions Ball Control  Reactions | Standing Tackle Interceptions Heading Accuracy Marking Sprint Speed | Standing Tackle Short Passing Heading Accuracy Sprint Speed  Crossing |
+
+
+Standing Tackle was the only player attribute that was calculated to be the most important variable in four out of the five models and was the only skill that appeared in top 5 most variables for every single model. Other variables that were within the 3 most important variables for determining overall rating across three of the four models were sliding tackle, and interceptions. Overall, the five most important variables across all four models were standing tackle, interceptions, heading accuracy, sliding tackle, and marking which are all key skills to effectively defend in soccer. Interestingly, age and height were of the least importance across all of the models.
+
+## Inference
+
+```{r, include= FALSE}
+print("Small Linear Model Prediction: ")
+predict(lmstep1,new=data.frame(Age=max(Backs$Age), Height=max(Backs$Height),  Weight=max(Backs$Weight), Interceptions=max(Backs$Interceptions), StandingTackle=max(Backs$StandingTackle),  SlidingTackle=max(Backs$ SlidingTackle), Reactions=max(Backs$Reactions), ShortPassing=max(Backs$ShortPassing) , Marking=max(Backs$Marking), BallControl = max(Backs$BallControl), Aggression = max(Backs$Aggression), Crossing = max(Backs$Crossing), HeadingAccuracy = max(Backs$HeadingAccuracy), SprintSpeed = max(Backs$SprintSpeed), Composure = max(Backs$Composure), InternationalReputation = max(Backs$InternationalReputation)), interval = "prediction")
+
+# print("Complex Linear Model Prediction: ")
+# predict(lm.stepbig,new=data.frame(Age=median(Backs$Age), Height=median(Backs$Height),  Weight=median(Backs$Weight), Interceptions=median(Backs$Interceptions), StandingTackle=median(Backs$StandingTackle),  SlidingTackle=median(Backs$ SlidingTackle), Reactions=median(Backs$Reactions), ShortPassing=median(Backs$ShortPassing) , Marking=median(Backs$Marking), BallControl = median(Backs$BallControl), Aggression = median(Backs$Aggression), Crossing = median(Backs$Crossing), HeadingAccuracy = median(Backs$HeadingAccuracy), SprintSpeed = median(Backs$SprintSpeed), Composure = median(Backs$Composure), InternationalReputation = median(Backs$InternationalReputation)), interval = "prediction")
+```
+
+```{r, include = FALSE}
+Backs["I. Ssewankambo", ]
+Backs["L. Saldaña", ]
+```
+
+
+|                    |  Ssewankambo | Median  | Saldaña |
+|--------------------|:------------:|:-------:|:-------:|
+| Marking            |      62      |    64   |    65   |
+| Ball Control       |      59      |    59   |    58   |
+| Aggression         |      66      |    66   |    61   |
+| Crossing           |      61      |    54   |    66   |
+| Heading Accuracy   |      58      |    62   |    48   |
+| Composure          |      62      |    59   |    53   |
+| Sprint Speed       |      89      |    67   |    83   |
+| Interceptions      |      61      |    64   |    64   |
+| Standing Tackle    |      63      |    66   |    60   |
+| Sliding Tackle     |      60      |    65   |    63   |
+| Reactions          |      58      |    62   |    71   |
+| Short Passing      |      62      |    60   |    58   |
+| Prediction (small) |     65.99    |  66.607 |  65.273 |
+| Prediction (large) |    66.038    |  65.946 |  66.622 |
+
+Above is an example of our actual model in use.  We picked two backs that had the same rating (66) yet different characteristics and tried to figure out if we could predict the overall of the player.  The left side is all the ratings of different attributes for Ssewankambo, the right is all the ratings of different attributes for Saldaña, and the middle is all the median ratings of the same different attributes.  One can see clearly that the two stack up differently in terms of which attributes that have ranked higher compared to the median and which they have ranked lower compared to the median.  The bottom two lines are the point forecast predictions for both players and the median ratings based on both our small and large model.  One can clearly see that Ssewankambo’s point forecast for the small model and the large model were right on target (65.99, 66.038).  Saldaña’s point forecasts for the small model missed the mark by an eighth of  a point (65.273) and the large model overestimated by a smidge (66.622). The median value point forecasts were slightly more accurate than Saldaña, but not more accurate than Ssewankambo as they had point forecasts of 66.607 for the small model and 65.946 for the large model.  Interesting to note that the small model gave a lower point forecast than the large model for both players, while it actually gave a higher point forecast based on the median values.  Lastly, the 95% confidence intervals and prediction intervals for both models contained the correct rating (66) for both players showing the fact that overall our models are quite accurate. 
+
+\newpage
+
+## Conclusions
+
+  We set out to find what skills were the most important in how FIFA ranked its players in FIFA 2019.  Specifically, we focused on modeling this relationship for defenders. We did this by looking at data for 5,866 backs in the FIFA 2019 data set and fitting the overall rating against all other predictors and narrowing our model down with the goal of finding a reasonable model that was both accurate and not overly complicated.  We ran a regression tree to narrow our data down from the original 89 variables in the data set to a much smaller number, then ran a stepwise regression to minimize BIC, giving us our simple model.  For our more complex model, we took the variables from the regression tree and included the interaction terms between all of those variables and then ran a stepwise regression to minimize BIC, leaving us with many more predictors than the simpler model.  These two models gave us slightly different pictures of the algorithm FIFA used to rank its players, with the smaller model having a few variables that had a somewhat greater impact on overall rank but with the larger model having no variables or interaction terms that were particularly larger than others. We also fit lasso regression and neural network models that had similar performance in terms of fitting test data and predicting overall rating, but these were a little harder to interpret if one wants to understand the influence of each player attribute. When it comes to defenders in soccer, certain skills absolutely matter more than others, and the importance of each of them
+varies with the other variables involved especially standing tackle, interceptions, heading accuracy, sliding tackle, and marking.
+
+  These models only truly works for defenders in this game, as the other positions largely depend on entirely different variables. By the time a new game comes out they may change what skills they value or how much they value.  It might be better to make a model with data from several games so that we might predict how good a player would be in a new game. It could also be interesting to try to make a model that could predict the overall rank for a player of any position, so long as we could keep track of all of the dummy variables necessary for such a model.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  

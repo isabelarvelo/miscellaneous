@@ -1,0 +1,303 @@
+---
+title: "Biostat Mini Project"
+author: "Group 6"
+date: "5/10/2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+#loading libraries 
+
+knitr::opts_chunk$set(echo = TRUE)
+suppressMessages(suppressWarnings(library(tidyverse)))
+suppressMessages(suppressWarnings(library(epitools)))
+suppressMessages(suppressWarnings(library(lmtest)))
+suppressMessages(suppressWarnings(library(sandwich)))
+suppressMessages(suppressWarnings(library(rgr)))
+suppressMessages(suppressWarnings(library(pubh)))
+# suppressMessages(suppressWarnings(library(questionr)))
+suppressMessages(suppressWarnings(library(aod)))
+suppressMessages(suppressWarnings(library(survival)))
+suppressMessages(suppressWarnings(library(gridExtra)))
+```
+
+
+# Data Cleaning
+
+```{r}
+df <- read_delim("LB2.txt", "\t", escape_double = FALSE, trim_ws = TRUE)
+colnames(df) <- c("Race", "Sex", "YearDiag", "PatiendID", "MedianHHIncome", 
+                   "CountyRuralUrban", "SurgerySiteCode", "COD", "SurvMonths", 
+                   "SurvMonthsFlag", "NodesExamined", "NodesPositive", "Age", "Stage")
+```
+
+```{r}
+# coding Death as variable 
+df$Alive <- as.numeric(df$COD == "Alive")
+df$Dead <- 1 - df$Alive
+```
+
+```{r}
+# recode as numeric
+df$SurgerySiteCode <- as.numeric(df$SurgerySiteCode)
+df$SurvMonths <- as.numeric(df$SurvMonths)
+df$Age <- as.numeric(gsub(" years", "", df$Age))
+```
+
+```{r}
+# remove unknown (99) and surgery with no site (90)
+df<-subset(df, SurgerySiteCode != 90)
+df<-subset(df, SurgerySiteCode != 99)
+```
+
+```{r}
+#remove cases where we don't have time-to-event data 
+df<-subset(df, SurvMonthsFlag != "Not calculated because a Death Certificate Only or Autopsy Only case")
+```
+
+
+```{r}
+# create surgery type variable
+df <- df %>% mutate(SurgeryType = case_when(
+                df$SurgerySiteCode < 10  ~ 'No Surgery',
+                df$SurgerySiteCode <= 19  ~ 'Tumor destruction',
+                df$SurgerySiteCode <= 80  ~ 'Resection'))
+```
+
+
+# Data Exploration
+
+```{r}
+top10 <- sort(table(df$COD), decr = TRUE)[1:10]
+data.frame(top10)
+```
+
+```{r}
+df %>% filter(Dead == 1) %>% count(Sex) %>% mutate(prop = n/sum(n))
+df %>% filter(Alive == 1) %>% count(Sex) %>% mutate(prop = n/sum(n))
+```
+
+```{r}
+mosaicplot(table(df$Sex, df$Dead),xlab = "Sex", ylab = "Mortality",main = "", col = c("firebrick", "deepskyblue1"))
+```
+
+
+```{r}
+alive <- df %>% filter(Dead == 1) # %>% select(age.num)
+dead <- df %>% filter(Alive == 1) # %>% select(age.num)
+boxplot(alive$Age, dead$Age, names = c("Alive", "Dead"))
+```
+
+```{r}
+t <- table(df$Stage, df$SurgeryType)
+t
+# grid.table(t)
+# should probably remove the in situ case because there's only 1 observation
+```
+
+```{r}
+table(df$Race, df$Sex)
+```
+
+```{r}
+prop.table(table(df$Race, df$Dead), margin=1)
+```
+
+```{r}
+prop.table(table(df$Race, df$SurgeryType), margin=1)
+```
+
+
+```{r}
+# margin=1 is for rows
+prop.table(table(df$SurgeryType, df$Dead), margin=1)
+```
+
+```{r}
+df %>% 
+  filter(Dead == 1) %>% 
+  count(CountyRuralUrban) %>% 
+  mutate(pct = n / sum(n) * 100)
+
+df %>% 
+  filter(Alive == 1) %>% 
+  count(CountyRuralUrban) %>% 
+  mutate(pct = n / sum(n) * 100)
+```
+
+```{r}
+df %>% 
+  filter(Dead == 1) %>% 
+  count(MedianHHIncome) %>% 
+  mutate(pct = n / sum(n) * 100)
+
+df %>% 
+  filter(Alive == 1) %>% 
+  count(MedianHHIncome) %>% 
+  mutate(pct = n / sum(n) * 100)
+```
+
+
+# Final data cleaning after exploration
+
+```{r}
+# recode county hh income
+df$MedianHHIncome[df$MedianHHIncome == "Unknown/missing/no match/Not 1990-2018"] <- NA
+df$MedianHHIncome <- as.numeric(as.factor(df$MedianHHIncome))
+```
+
+```{r}
+# recode county rural urban
+df$CountyRuralUrban[df$CountyRuralUrban == "Unknown/missing/no match/Not 1990-2018"] <- NA
+df$CountyRuralUrban[df$CountyRuralUrban == "Unknown/missing/no match (Alaska or Hawaii - Entire State)"] <- NA
+df$CountyRuralUrban <- as.numeric(as.factor(df$CountyRuralUrban))
+```
+
+```{r}
+df <- subset(df, Stage != 'In situ')
+```
+
+
+#Assumptions 
+
+#Non Informative Censoring 
+```{r}
+CompleteInfo<- subset(df, SurvMonthsFlag == "Complete dates are available and there are 0 days of survival" |
+                    SurvMonthsFlag == "Complete dates are available and there are more than 0 days of
+                    survival")
+Censored<- subset(df, SurvMonthsFlag == "Incomplete dates are available and there cannot be zero days of follow-up" | SurvMonthsFlag == "Incomplete dates are available and there could be zero days of follow-up")
+```
+
+```{r}
+library(tidyverse)
+library(ggpubr)
+a<- ggplot(CompleteInfo, aes(x=Age)) + geom_histogram() + ggtitle("Age")
+b<- ggplot(CompleteInfo, aes(x=Sex)) + geom_bar() + ggtitle("Sex")
+c<- ggplot(CompleteInfo, aes(x=Race)) + geom_bar() + ggtitle("Race")
+d<- ggplot(CompleteInfo, aes(x=CountyRuralUrban)) + geom_histogram() + ggtitle("County Rural Urban")
+e<- ggplot(CompleteInfo, aes(x=MedianHHIncome)) + geom_histogram() + ggtitle("Median HH Income")
+f<- ggplot(CompleteInfo, aes(x=SurgerySiteCode)) + geom_histogram() + ggtitle("Site")
+
+
+u<- ggplot(Censored, aes(x=Age)) + geom_histogram() + ggtitle("Age")
+v<-ggplot(Censored, aes(x=Sex)) + geom_bar() + ggtitle("Sex")
+w<-ggplot(Censored, aes(x=Race)) + geom_bar() + ggtitle("Race")
+x<-ggplot(Censored, aes(x=CountyRuralUrban)) + geom_bar() + ggtitle("County Rural Urban")
+y<-ggplot(Censored, aes(x=MedianHHIncome)) + geom_histogram() + ggtitle("Median HH Income")
+z<-ggplot(Censored, aes(x=SurgerySiteCode)) + geom_histogram() + ggtitle("Site")
+
+k<- ggarrange(a,b,c,d,e,f, nrow = 2, ncol = 3)
+p<- ggarrange(u,v,w,x,y,z, nrow = 2, ncol = 3)
+
+annotate_figure(
+  k,
+  top = text_grob("Complete Cases",face = "bold", size = 14), 
+  bottom = NULL,
+  left = NULL,
+  right = NULL,
+  fig.lab = "")
+
+annotate_figure(
+  p,
+  top = text_grob("Censored Cases",face = "bold", size = 14), 
+  bottom = NULL,
+  left = NULL,
+  right = NULL,
+  fig.lab = "")
+```
+
+# Unadjusted Model
+```{r}
+SurvObj <- with(df, Surv(time = SurvMonths, event = Dead))
+
+sf <- survfit(SurvObj ~ SurgeryType, data = df)
+
+plot(sf, col = 1:4, lty = 1:4, xlab = "Months", ylab = "P(No Death)")
+legend("topright", legend=unique(df$SurgeryType), col=1:3, lty = 1:3)
+```
+```{r}
+quantile(sf, 5/10)
+```
+
+Based on the Kaplan-Meier curves, we see that the rate of death is a lot more gradual with Resection Surgery than in both other treatment groups groups over thecourse of the approximately 10 years of follow-up, the curve for no surgery is the steepest (higher hazard, higher riskof death). We estimate that 50% of  adults with resection surgery survived at least 106 months (8.8 years), whereas 50% of  adults with tumor destruction surgery survived at least 11 months and adults that did not receive surgery surived at least 9 months after they were enrolled in the study.
+
+
+```{r}
+coxmod <- coxph(SurvObj ~ SurgeryType*Stage, data = df)
+glm_coef(coxmod, digits = 3)
+```
+
+Based on Cox proportional hazards regression analysis, we estimate that the instantaneous risk of death is .181 times lower for patients that that receive Resection surgery and .703 times lower for patients that that receive Tumor destruction surgery than for patients that do not have surgery. 
+
+```{r}
+wald.test(coef(coxmod), Sigma = vcov(coxmod), Terms = c(6:11))
+```
+
+
+
+
+# Adjusted Model
+
+```{r}
+par(mfrow=c(2,2))
+
+Distant <- subset(df, Stage == "Distant")
+Localized <- subset(df, Stage == "Localized")
+Regional <- subset(df, Stage == "Regional")
+Unknown <- subset(df, Stage == "Unknown/unstaged")
+
+SurvObjDist <- with(Distant, Surv(time = SurvMonths, event = Dead))
+sfDist <- survfit(SurvObjDist ~ SurgeryType, data = Distant)
+plot(sfDist, col = 1:4, lty = 1:4, xlab = "Months", ylab = "P(No Death)", main = "Distant")
+legend("topright", legend=unique(Distant$SurgeryType), col=1:3, lty = 1:3, cex=0.50)
+
+
+SurvObjLoc <- with(Localized, Surv(time = SurvMonths, event = Dead))
+sfLoc <- survfit(SurvObjLoc ~ SurgeryType, data = Localized)
+plot(sfLoc, col = 1:4, lty = 1:4, xlab = "Months", ylab = "P(No Death)", main = "Localized")
+legend("topright", legend=unique(Localized$SurgeryType), col=1:3, lty = 1:3, cex=0.50)
+
+
+SurvObjReg <- with(Regional, Surv(time = SurvMonths, event = Dead))
+sfReg <- survfit(SurvObjReg ~ SurgeryType, data = Regional)
+plot(sfReg, col = 1:4, lty = 1:4, xlab = "Months", ylab = "P(No Death)", main = "Regional")
+legend("topright", legend=unique(Regional$SurgeryType), col=1:3, lty = 1:3, cex=0.50)
+
+
+SurvObjUn <- with(Unknown, Surv(time = SurvMonths, event = Dead))
+sfUn <- survfit(SurvObjUn ~ SurgeryType, data = Unknown )
+plot(sfUn, col = 1:4, lty = 1:4, xlab = "Months", ylab = "P(No Death)", main = "Unknown Stage")
+legend("topright", legend=unique(Unknown$SurgeryType), col=1:3, lty = 1:3, cex=0.50)
+```
+
+
+```{r}
+coxmod2 <- coxph(SurvObj ~ SurgeryType*Stage + Sex + Age  + Race + YearDiag + MedianHHIncome + CountyRuralUrban  , data = df)
+glm_coef(coxmod2, digits = 3)
+```
+
+```{r}
+library(aod)
+wald.test(coef(coxmod2),Sigma = vcov(coxmod2),Terms = c(15:20))
+```
+
+```{r}
+#follow up study 
+lm1 <- lm(NodesPositive~SurgeryType*Stage + Sex + Age  + Race + YearDiag + MedianHHIncome + CountyRuralUrban  , data = df)
+summary(lm1)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
