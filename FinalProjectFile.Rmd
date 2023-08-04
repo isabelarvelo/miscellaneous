@@ -1,0 +1,929 @@
+---
+title: "Exploring the Effect of Revegetation Practices on Avian Biodiversity"
+subtitle: "Paper Replication"
+author: "Isabel Arvelo and Grace Guidotti"
+date: "2022-11-30"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+```{r, include = FALSE}
+library(GLMsData)
+library(gridExtra)
+library(GGally)
+data("nminer")
+library(ggExtra)
+library(BSDA)
+library(car)
+library(arm)
+library(blorr)
+library(ggpmisc)
+library(cluster)
+library(fpc)
+library(MASS)
+library(knitr)
+```
+
+
+
+## 1. Introduction: 
+
+ A common method of landscape restoration is replanting and rebuilding the soil of land where vegetation is disturbed or absent to improve biodiversity. However, the success of this process may be affected by interspecific interactions that favor particular predators and negatively impact certain target species, which has an overall adverse effect on the entire assemblage. Typical woodland revegetation focuses on the establishment of tree species that grow quickly and blend in aesthetically. In the Wimmera region of western Victoria in Australia, *Eucalyptus* and *Acacia* species are common choices for plantings, even in locations originally dominated by the slower growing buloke. In New South Wales these plantings intended to recreate suitable habitat for threatened and declining native birds, have been dominated by the noiser miner (*manorina melanocephala*), a highly aggressive species that excludes other bird species. Noisy miners primarily inhabit eucalypt woodland and the increase in planted eucalypts, especially in buloke revegetation and degraded buloke woodland, has the potential to have a major impact on the birds that will inhabit the maturing revegetation.
+
+ Martine Maron aimed to identify the impact of current revegetation practices on bird species that inhabit mature revegetation and investigated the relationship between site-level factors, such as eucalypt density, and noisy miner invasion. She specifically attempted to determine whether there was a certain number of eucalypts in a buloke woodland that resulted in the presence of the Noisy Miner bird species, as well as the impact of noisy miners on surrounding bird species.
+  
+
+## 2. Methods: 
+
+**Study Area**
+
+In order to measure the presence of the Noisy Miner species, the researchers studied sites in the Wimmera Plains region of western Victoria, Australia. The majority of the native vegetation in the area occurs in small patches of private land, public reserves, and roadsides, with the private land being heavily degraded from grazing activities. All sites were independent of one another.
+
+31 Buloke woodland patches were studied, mainly on private land (with plant reserve areas) and one on unreserved Crown land (meaning that it is own landed by the Crown and has not been set aside for public use). Within each site, a 100m x 200m belt transect was haphazardly located with at least one edge of the belt within 50m of the edge of the woodland. This was done to increase likelihood of detecting Noisy Miners because Noisy Miners are considered an edge species.
+
+**Study Sites** 
+
+Each transect was surveyed on 3 occasions:  
+1. 13-17 December, 2004   
+2. 28-31 March, 2005   
+3. 18-22 September, 2005   
+
+In order to survey for birds, researchers walked through the middle of the transect for 20 minutes and recorded all birds seen or heard.
+
+
+**Contributing Datasets:**
+
+```{r, include = FALSE}
+data(nminer)
+```
+
+```{r, include = FALSE}
+species <- c("Australian wood duck", 
+             "Black-shouldered kite", 
+             "Brown falcon", 
+             "Nankeen kestrel", 
+             "Australian hobby", 
+             "Crested pigeon", 
+             "Galah", 
+             "Long-billed corella", 
+             "Cockatiel", 
+             "Purple-crowned lorikeet", 
+             "Musk lorikeet", 
+             "Eastern rosella", 
+             "Blue bonnet", 
+             "Red-rumped parrot", 
+             "Horsfield’s bronze-cuckoo", 
+             "Tawny frogmouth",
+             "Laughing kookaburra", 
+             "Brown treecreeper", 
+             "Variegated fairy-wren", 
+             "Striated pardalote", 
+             "Chestnut-rumped thornbill", 
+             "Yellow-rumped thornbill", 
+             "Yellow thornbill", 
+             "Weebill", 
+             "Southern whiteface", 
+              "Red wattlebird", 
+             "Spiny-cheeked honeyeater", 
+             "Yellow-throated miner", 
+             "Singing honeyeater", 
+             "White-plumed honeyeater", 
+             "Brown-headed honeyeater",
+             "Jacky winter", 
+             "Red-capped robin",
+             "Hooded robin", 
+             "Varied sittella",
+             "Rufous whistler",
+             "Magpie-lark", 
+             "Willie wagtail", 
+             "Grey fantail", 
+             "Black-faced cuckoo-shrike",
+             "White-browed woodswallow", 
+             "Black-faced woodswallow", 
+             "Dusky woodswallow", 
+             "Pied butcherbird", 
+             "Australian magpie", 
+             "Australian raven", 
+             "Little raven",
+             "White-winged chough",
+             "European goldfinch", 
+             "House sparrow", 
+             "Mistletoebird", 
+             "Welcome swallow", 
+             "Tree martin", 
+             "Rufous songlark",
+             "Common starling")
+
+
+nminer_present <- c(1,0,2,1,0,11,6,0,0,1,0,5,2,12,0,0,1,8,1,5,6,11,8,2,7,1,1,0,5,8,1,5,7,11,9,4,0,10,5,1,1,0,6,0,10,1,1,0,0,10,1,2,2,1,6)
+
+nminer_absent <- c(2,1,2,1,1,12,12,1,2,3,2,13,3,15,1,1,2,10,1,10,1,5,0,0,0,1,2,1,0,10,1,1,0,3,0,0,2,7,0,1,1,1,3,1,14,2,0,2,1,9,1,3,2,0,10)
+
+declining_woodland <- c(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,0,0,0,1,0,0,0,0,0,0,1,1,1,1,1,0,0,0,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0)
+
+species_df <- data.frame(Species = species, Rminer_Present = nminer_present , Rminer_Absent = nminer_absent, Declining_Woodland = declining_woodland )
+
+species_df$Difference <- species_df$Rminer_Present - species_df$Rminer_Absent
+
+num <- c(nminer_present, nminer_absent)
+presence <- c(rep(1, 55), rep(0, 55))
+df <- data.frame(rep(species, 2), num, presence)
+```
+
+
+
+*nminer: Noisy miner abundance dataset in GLMSData*
+
+The publicly available dataset has 31 observations, each of which represents one of the 31 buloke woodland patches studied. The response variables of interest are Miners, presence or absence of Noisy miners, and Minerab, the number of noisy miners observed across the three surveys. 
+
+The available predictor variables are Eucs (the number of eucalypts in each 2 hectare transect), Area (the area in hectares of contiguous remnant patch of vegetation in which the transect was located), Grazed (whether the area was grazed or not), Shrubs (whether shrubs were present in the transect or not), Bulokes (the number of buloke trees in each 2 ha transect), and Timber (the number of pieces of fallen timber in the transect). 
+
+This varies slightly from the variables they use in their analysis because for each transect they recorded the total numbers of buloke trees, shrubs, and pieces of fallen timber and all eucalypts identified and counted. In four 3 m diameter circular quadrats randomly located within each transect, the percentage cover of bare ground, cryptogams, grass, fine litter and coarse litter was visually estimated, and the means for the transect calculated. However, we only have shrubs as a binary variable, and we do not have data on the percentage cover of each type of material for the transect. In their final model, they include shrubs as a contonuous variable and fine litter, but we do not have access to either of these variables in our dataset. 
+
+*Species Abundance data from in Appendix 1 of paper*
+
+Appendix 1 in the paper includes a table that lists the number of sites with and without noisy miners in which each bird species was observed during the three surveys. A total of 56 species was recorded during surveys, including 11 declining woodland species (for details see Appendix 1).
+
+
+
+## Statistical Analysis:
+
+**Exploratory Data Analysis**
+
+*Visualization*
+
+The authors did not do a lot of exploratory data analysis, but since we do not have all of the same explanatory variables at our disposal and do not have the same level of domain knowledge we performed an initial investigation of the data using visualizations. These plots help summarize its main characteristics and uncover patterns or relationships within the data primarily with bivariate visualizations of the explanatory variables against each other and against the response. 
+
+*K-medioids clustering*
+
+Since the researchers are interested in site level factors, we also thought it would be interesting to cluster the data into non-hierarchical clusters to identify groups with similar site level factors that could potentially help researchers identify the best re vegetation practices for specific groups of ecosystems. 
+
+K-means clustering is a popular algorithm because it’s a simple and fast classification method, but it uses Euclidian distance which is only defined for numeric values and therefore not appropriate for binary variables like the ones in our data set. Instead, we opted to use Gower's distance which uses a type of distance that is appropriate for each type of variable. 
+
+$$D_{Gower}(x_1, x_2) = 1 - (\frac{1}{p}\sum_{j=1}^{p}{s_j(x_1, x_2)})$$
+
+Where $s_j$is the partial similarity function computed separately for each pair of variables over two data sets. 
+
+We use this to create distance matrix and then use a k-medoid method to minimizes the sum of dissimilarities between points labeled to be in a cluster and a point, referred to as the mediod, designated as the center of that cluster.
+
+
+**Bird Assemblages**
+
+The two metrics the paper uses to assess bird assemblages and habitat use are species richness and species abundance. In order to compare these metrics, they combined the data  from the three bird surveys, log-transformed species richness and total abundance across all species, and compared the values between transects with and without noisy miners using t-tests. However, without site level species data we can not directly address either of these questions because we don't know which or how many species were present in which sites. We only have information about how many sites with and without noisy miners each species was present in, but comparing these values for each species could still give us some indication of whether species are more or less likely to survive/inhabit an ecosystem when noisy miners are present. In other words, the question we are asking is if the presence of noisy miners is associated with whether or not native species will inhabit a community? If we find that species are observed at the lower frequencies among sites with noisy miners than without noisy miners, we would conclude that noisy miners' aggressive behaviors do indeed exclude other birds from the territories they occupy. 
+
+In order to compare the number of birds observed for each species in sites with and without noisy miners, we will use a paired-sample sign test. The typical choice for this type of analysis would be a paired t-test, but the number of birds is not normally distributed, even after log transformation. This non-parametric hypothesis test makes no assumption about the shape of the population distribution, therefore this test can handle a data set that is non-symmetric, as is the case for this data. In order to determine whether the median of a population is equal to a default value, the one sample sign test compares the number of observations greater than or less than the default value without accounting for the magnitude of the difference between each observation and the default value. In order to compare the pair of values for each bird, we will do a sign test on the difference between the sample pairs. 
+
+**Noisy Miner Presence**
+
+The collected data on the presence of Noisy Miners was converted into a binary presence/absence variable. We began by building a full model with all of the predictors and then used the backwards stepwise selection technique and likelihood ratio tests to determine the appropriate predictors of the model. For the likelihood ratio test, we used a significance value of P<0.05 in order to choose our variables for the final model.
+
+
+**Noisy Miner Counts**
+
+Next, we considered the *Minerab* variable that represents the number of noisy miners (abundance) observed in three 20 minute surveys. The number of noisy miners is highly skewed right (see Appendix) a Poisson model is an appropriate choice to model this response variable. We began by building a full model with all the variables included in the model and then found evidence of overdispersion so moved forward with both a quasi-poisson and negative binomial model. 
+
+We used backward stepwise regression to identify which variables had a significant effect on the number of noisy miners. The likelihood ratio method was used to identify variables whose removal did not significantly reduce model fit (at a significance level of P < 0.05) and these were removed from the model. The paper used a significance level of P<0.10, probably because of the small sample size, but we decided to test our hypotheses at $\alpha = 0.05$ to have more confidence in our inferences. 
+
+
+# 3. Results 
+
+**Exploratory Data Analysis**
+
+*Bivariate Relationships*
+
+```{r, echo=FALSE, fig.height = 3.75, fig.width = 5.25}
+nminer$Grazed <- as.factor(nminer$Grazed)
+nminer$Shrubs <- as.factor(nminer$Shrubs)
+
+ggp <- ggpairs(nminer, progress = F)
+suppressWarnings(print(ggp))
+```
+
+
+```{r, echo = FALSE, fig.height= 2.5}
+a <- ggplot(nminer, aes(x=Eucs, y = Minerab)) + geom_point() + geom_smooth(se = FALSE) + ggtitle("Noisy Miners vs Eucalypts") + xlab("# of Eucalypts") + ylab("# of noisy miners")
+
+b <- ggplot(nminer, aes(x= Eucs, y = Bulokes)) + geom_point() + geom_smooth(se = FALSE)+ ggtitle("Buloke Trees vs Eucalypts") + xlab("# of Eucalypts") + ylab("# of Bulokes")
+
+grid.arrange(a,b, ncol = 2)
+```
+
+We began with a matrix of plots that illustrate the relationship between all the pairwise combinations of variables. The two most noteworthy relationships above seem to be between Eucs and Minerab ($r = 0.725$) and Eucs and Bulokes ($r=-0.475$). Looking at these relationships closer, we found that transects with a greater number of eucalypts tend to be inhabited by more noisy miners and less Buloke trees. 
+
+We then specifically wanted to look at the distribution of the response variables of interest, Miners and Minerab, against the different levels of the explanatory variables. 
+
+```{r, echo = FALSE}
+e <- ggplot(nminer, aes(x=as.factor(Miners), y = Eucs)) + geom_boxplot() +
+  geom_jitter(width = 0.1, alpha = 0.5, color = "tomato") + xlab("Miner Presence")
+f <- ggplot(nminer, aes(x=as.factor(Miners), y = Area)) + geom_boxplot() + 
+  geom_jitter(width = 0.1, alpha = 0.5, color = "tomato") + xlab("Miner Presence")
+g <- ggplot(nminer, aes(x=as.factor(Miners), y = Bulokes)) + geom_boxplot() +
+  geom_jitter(width = 0.1, alpha = 0.5, color = "tomato") + xlab("Miner Presence")
+h <- ggplot(nminer, aes(x=as.factor(Miners), y = Timber)) + geom_boxplot() + 
+  geom_jitter(width = 0.1, alpha = 0.5, color = "tomato") + xlab("Miner Presence")
+
+grid.arrange(e,f,g,h, ncol = 2)
+```
+
+These plots are further evidence that sites with miners present tend to have more eucalypts and less bulokes than sites without noisy miners. Sites without miners have a wider distribution for the number of piece of fallen timber. Area does not vary by miner presence. 
+
+```{r, echo=FALSE, fig.height = 3.5}
+e <- ggplot(nminer, aes(x=as.factor(Miners), fill = Grazed )) + geom_bar() + ylim(0,25) + xlab("Miner Presence")
+f<- ggplot(nminer, aes(x=as.factor(Miners), fill = Shrubs )) + geom_bar() + ylim(0,25) + xlab("Miner Presence")
+
+
+
+#Proportion Table of Grazed Variable by levels of Miner 
+tab1 <- prop.table(table(nminer$Miners, nminer$Grazed), margin = 1)
+names(dimnames(tab1)) <- c("Miners", "Grazed")
+tab1 <- as.data.frame(tab1)[c(1,3,2,4), ]
+
+tab2 <- prop.table(table(nminer$Miners, nminer$Shrubs), margin = 1)
+names(dimnames(tab2)) <- c("Miners", "Shrubs")
+tab2 <- as.data.frame(tab2)[c(1,3,2,4), ]
+
+e2 <- e +                             
+  annotate(geom = "table",
+           x = 1.5,
+           y = 25,
+           label = list(as.data.frame(tab1)))
+
+f2 <- f + 
+  annotate(geom = "table",
+           x = 1.5,
+           y = 25,
+           label = list(as.data.frame(tab2)))
+
+grid.arrange(e2,f2, ncol = 2)
+```
+
+It appears that sites with miners are less likely to be grazed or have shrubs than sites without miners. 
+
+```{r, echo = FALSE}
+theme_set(theme_bw())
+
+a <- ggplot(nminer, aes(y=Minerab, x = Eucs)) + geom_point() + ggtitle("Noisy Miners vs Eucalypts") + theme(plot.title = element_text(size=10)) +ylab("# of Noisy Miners") + xlab("Eucalypts")
+
+b <- ggplot(nminer, aes(y=Minerab, x = Area)) + geom_point() + ggtitle("Noisy Miners vs Area")+ theme(plot.title = element_text(size=10))+ylab("# of Noisy Miners")
+
+c <- ggplot(nminer, aes(y=Minerab, x = Bulokes)) + geom_point() +ggtitle("Noisy Miners vs Bulokes") + theme(plot.title = element_text(size=10)) +ylab("# of Noisy Miners")
+
+d <- ggplot(nminer, aes(y=Minerab, x = Timber)) + geom_point() +ggtitle("Noisy Miners vs Timber") + theme(plot.title = element_text(size=10)) +ylab("# of Noisy Miners")
+
+grid.arrange(ggMarginal(a, type = "histogram", fill = "transparent"),ggMarginal(b, type = "histogram", fill = "transparent"),ggMarginal(c, type = "histogram", fill = "transparent"),ggMarginal(d, type = "histogram",fill = "transparent"), ncol = 2)
+```
+
+Here, we see a positive relationship between number of eucalyptus trees and number of noisy miner birds and potentially a negative curved relationship between areas and number of noisy miner birds which could potentially indicate that a transformation may be necessary. 
+
+```{r, fig.height = 2.5, echo = FALSE}
+e <- ggplot(nminer, aes(x=Grazed, y = Minerab)) + geom_boxplot() +
+  geom_jitter(width = 0.1, alpha = 0.5, color = "tomato") + xlab("Grazed") +ylab("# of Noisy Miners")
+f <- ggplot(nminer, aes(x=Shrubs, y = Minerab)) + geom_boxplot() + 
+  geom_jitter(width = 0.1, alpha = 0.5, color = "tomato") + xlab("Shrubs") +ylab("# of Noisy Miners")
+
+
+grid.arrange(e,f, ncol = 2)
+```
+
+Sites that have been grazed appear to have a lower median and narrower distribution of number of noisy miners than those have not been grazed. Sites with shrubs have a lower median number of noisy miners, but its unclear whether noisy miner counts are significantly different between the two levels of this factor. 
+
+**Clustering**
+
+In order to cluster the mixed types of data (both the explanatory variables and response), we first compute all the pairwise dissimilarities (using a generalization of Gower's formula) between observations in the data set and then perform a partitioning around medoids clustering with the number of clusters estimated by optimum average silhouette width. 
+
+```{r, include = FALSE}
+g.dist = daisy(nminer, metric="gower")
+pc = pamk(g.dist, criterion="asw")
+pc_object = pc$pamobject
+```
+
+A silhouette plot is a graphical tool that represents if the clustering configuration is appropriate. Values range from -1 to 1;  a high value indicates that the object is cohesive with its own cluster and poorly matched to neighboring clusters. The number of clusters is estimated by optimum average silhouette width. 
+
+```{r, echo = FALSE, fig.height = 3.75, fig.width = 5.25 }
+plot(pc_object)
+```
+
+The optimal number of clusters is 5, 3 of the clusters include sites with noisy miners and 2 of them do not.  
+
+```{r, include = FALSE}
+summary_vars <- c("Miners", "Eucs", "Area", "Grazed", "Shrubs", "Bulokes", "Timber", "Minerab")
+cluster3_summ <- c("0:0,  1:7", "15.00", "16", "0:0, 1:7", "0:7, 1:0", "123.0", "25.00", "3.0 ")
+cluster2_summ <- c("0:0, 1:6", "17.00", "19.00", "0:6, 1:0", "0:0, 1:6", "92.5", "12.50", "4.00 ")
+cluster4_summ <- c("0:0, 1:4", "25.5", "10.00", "0:4, 1:0 ", "0:4, 1:0 ", "66.5", "32", "7.00 ")
+```
+
+```{r, echo = FALSE}
+#Clusters with noisy miners
+df_clus1 <- data.frame(Variable = summary_vars, Cluster3 = cluster3_summ, Cluster2 = cluster2_summ, Cluster4 = cluster4_summ)
+
+#clusters without noisy miners
+cluster1_summ <- c(" 0:8 , 1:0", "5.5", "18.50", "0:7, 1:1", "0:1, 1:7", "66.5", "118.50 ", "0 ")
+cluster5_summ <- c("0:6, 1:0", "1.0", "12.50", "0:0, 1:6", "0:6, 1:0", "191.0", "41.50", "0")
+
+df_clus2 <- data.frame(Variable = summary_vars, Cluster5 = cluster5_summ, Cluster1 = cluster1_summ)
+```
+
+```{r, echo = FALSE}
+kable(df_clus1, caption = "Clusters with Noisy Miners", align = "l")
+kable(df_clus2, caption = "Clusters without Noisy Miners", align = "l")
+```
+Unsurprisingly, as the median number of Eucs increases across the three groups where noisy miners are present, the median number of noisy miners increase and the number of Bulokes decreases inversely. We also find that groups with less Eucs and more Bulokes are more likely to be grazed and than those with less Eucs and more Bulokes. 
+
+Within the groups in which noisy miners are absent, one cluster has mostly sites that are not grazed with shrubs , while the other has mostly sites that are grazed without shrubs. Interestingly, the latter group has a considerable lower value for Eucs and higher value for Bulokes. This supports the finding among clusters with noisy miners that grazed areas tend to have less Eucs and more Bulokes than non-grazed areas.  
+
+**Bird Assemblage**
+
+
+$H_0: Sites_{present} - Sites_{absent} = 0$
+
+$H_0: Sites_{present} - Sites_{absent} \ne 0$
+
+We fail to reject the null hypothesis (See Appendix 7). There is not evidence that the number of birds for each species varies between sites with and without noisy miners present. The paper found that  species richness significantly differed between sites with and without noisy miners, but without access to site level species richness we do not enough information to agree or disagree with this finding. From the limited information we do have, there is not strong evidence that noisy miners make native speies less likely to inhabit an ecosystem. 
+
+
+**Binomial GLM**
+
+First, we considered the *Miners* variable that represents whether or not noisy miners are present (1 or 0). 
+
+```{r, include=FALSE}
+#null model
+bin_mod0 <- glm(Miners ~1, data=nminer,family = "binomial")
+#full model
+bin_mod1 <- glm(Miners ~ Eucs + Area + Grazed + Shrubs + Bulokes + Timber, data=nminer, family = "binomial")
+```
+
+Examining the full model, the table below shows the estimates and standard errors. 
+
+```{r, echo= FALSE}
+table1 <- coef(summary(bin_mod1))[,1:2]
+table2 <- cbind(exp(bin_mod1$coefficients),table1)
+colnames(table2) <- c("exp(Estimate)","Estimate","SE")
+kable(table2, caption = "Coefficients of Full Model", align = "l")
+```
+
+In order to analyze the percentage of variation explained by the current model, the researchers chose to use the Nagelkerke R-Squared value. This value is an adjusted version of the Cox and Snell R-squared value. It is adjusted by dividing by the maximum value in order to keep the R-Squared value between 0 and 1. 
+
+\begin{center}
+
+The Cox-Snell $R^2$ formula is:    
+
+$R^2 = 1- [\frac{L(0)}{L(\hat{\beta})}]^{2/n}$    
+where $L(0)$ is the likelihood of the null model   
+and $L(\hat{\beta})$  is the likelihood of the full model  
+
+The formula for the Nagelkerke $R^2$ is:  
+
+$=\frac{R^2}{max(R^2)}$  
+where $max(R^2) = 1- exp(2n^{-1} l(0)) = L(0)^{2/n}$  
+where $l(0)$ is the log likelihood of the null model  
+\end{center}
+
+Although this is a pseudo R-squared estimate it can still be interpreted as the approximate percentage of total variation explained by the model because its values are between 0 and 1.  
+
+Therefore, 89% of the variation in the miners variable can be described by the full model including all variables.  
+
+```{r, include = FALSE}
+blr_rsq_nagelkerke(bin_mod1)
+```
+
+In order to extend this analysis further, it would also be interested to compare this value to our 'pseudo' R-squared estimate explored in class defined as:  
+
+\begin{center}
+$R^2_{pseudo} = 1- \frac{D(Y, \hat{\mu})}{D(Y,\bar{Y})}$   
+where $D(Y, \hat{\mu}$ is the deviance of our model and $D(Y,\bar{Y})$ is the deviance for the null model. 
+\end{center}
+
+Using this method, the pseudo R-squared value is 0.81. Because this is a pseudo value we cannot interpret it in terms of percentage of variation explained. 
+
+```{r, include = FALSE}
+model_dev <- bin_mod1$deviance
+null_dev <- bin_mod0$deviance
+1- model_dev/null_dev
+```
+
+```{r, include = FALSE}
+#Error rates
+error_rate <- mean((bin_mod1$fitted.values>0.5 & nminer$Miners==0) | (bin_mod1$fitted.values<0.5 & nminer$Miners==1))
+1-error_rate
+error_rate
+#Error rate of null model
+int <- sum(nminer$Miners)/length(nminer$Miners)
+error_null <- 1-int
+error_null
+```
+
+Additionally, using this model the error rate is 6% using a threshold of 0.5. Therefore, using this model, 94% of transects were correctly predicted. Alternatively, for the null model, the null error rate is 45%. Meaning that the model is strong at predicting values compared to just the null model. 
+
+Lastly, the model has a dispersion parameter of 0.37 (<1) so it is not overdispersed and therefore we do not need to explore quasi models. 
+
+```{r, include = FALSE}
+sum(residuals(bin_mod1, type = "pearson")^2)/24
+```
+
+The figure below shows the binned residual plot for the full model. The binned residual plot for the full model shows that all but two points are within the range of 2 standard errors. Additionally, there is no major pattern for the residuals other than a slight bunching around the average. Examining this plot, there are no major concerns about the residuals.   
+
+```{r, echo= FALSE}
+#full model analysis
+binnedplot(bin_mod1$fitted.values,resid(bin_mod1, type = "response"), nclass=NULL, 
+           xlab="Expected Values", ylab="Average residual", 
+           main="Binned residual plot", 
+           cex.pts=0.8, col.pts=1, col.int="gray")
+```
+
+The paper analyzed a model just including the Eucs variable, so we felt it would be important to explore the value of this model to determine a threshold effect. The table below shows the coefficients and standard errors for the model. 
+
+The coefficents for the model using just eucalpyt number can be interpreted as
+
+- Intercept: For a plot with zero eucalyptus trees, the odds of a noisy miner being present is 0.017. 
+- Eucalypts: For each additional Eucalyptus tree in the plot of land, the odds of a noisy miner being present increases by a factor of 1.47.
+
+```{r, echo= FALSE}
+euc_mod <- glm(Miners~ Eucs, data=nminer, family= "binomial")
+table5 <- coef(summary(euc_mod))[,1:2]
+table6<- cbind(exp(euc_mod$coefficients),table5)
+colnames(table6) <- c("exp(Estimate)","Estimate","SE")
+kable(table6, caption = "Coefficients of Full Model", align = "l")
+```
+
+The plot below shows the plot of the probability of presence of noisy miners with number of Eucalypt trees. The plot shows that at a threshold of 14 trees there is approximately a probability of 0.8 of the presence of Noisy Miners. This is just 1 unit away from the value calculated by the paper of 15 trees as the threshold.  
+
+```{r, echo = FALSE}
+pframe1 <- with(nminer,expand.grid(Eucs=seq(min(Eucs),max(Eucs),length=100))) 
+pframe1$Miners <- predict(euc_mod,newdata=pframe1,type="response")   
+
+ggplot(data = nminer, aes(x= Eucs, y = Miners)) +
+  geom_point() +
+  geom_jitter() +
+  geom_line(data = pframe1, aes(col = "Euc")) +
+  geom_hline(yintercept=0.8)+ 
+  geom_vline(xintercept =14)+
+  scale_color_manual(name = "Legend", values = c("Euc" = "blue"))
+```
+
+```{r, include= FALSE}
+blr_rsq_nagelkerke(euc_mod)
+model_dev <- euc_mod$deviance
+null_dev <- bin_mod0$deviance
+1- model_dev/null_dev
+#Error rates
+error_rate <- mean((euc_mod$fitted.values>0.5 & nminer$Miners==0) | (euc_mod$fitted.values<0.5 & nminer$Miners==1))
+1-error_rate
+#Error rate of null model
+#null model has only the intercept, and this will just be the proportion of 1's in the data
+int <- sum(nminer$Miners)/length(nminer$Miners)
+error_null <- 1-int
+error_null
+```
+
+Using the model just including eucalyptus trees, using the nagelkerke R-squared value, approximately 71% of variation in miner presence can be predicted with just eucalpyt number. Using the pseudo R-squared estimate memthod, the R-squared value is only 0.55.
+
+Additionally, using this model the error rate is 13% using a threshold of 0.5. Therefore, using this model, 87% of transects were correctly predicted. Alternatively, for the null model, the null error rate is 45%. Meaning that the model is strong at predicting values compared to just the null model.
+
+These findings are very similar to the findings of the paper. They also found a Nagelkerke R-Squared value of 0.71 and a 13% error rate. 
+
+Backwards AIC stepwise selection recommends that the appropriate predictors to include in the model are Euc, Grazed, Shrubs, and Timber. Additionally, using a likelihood ratio test, we tested whether any variables should be dropped from the full model. The likelihood ratio test recommended that in addition to the recommendations of the backwards selection model, Shrubs should also be dropped from the model due to a p-value of 0.07453822 (>0.05). Both of these tests can be found in Appendix 5.
+
+The table below shows the exponentiated estimates, estimates and standard errors for the final model recommended by the likelihood ratio tests. Examining this model, none of the predictors are significant in the final model. Additionally, similar to the full model it is also underdispersed with a dispersion parameter of 0.50. 
+
+```{r, echo = FALSE}
+final_mod <- glm(Miners ~ Eucs + Grazed + Timber, data=nminer, family = "binomial")
+table3 <- coef(summary(final_mod))[,1:2]
+table4 <- cbind(exp(final_mod$coefficients),table3)
+colnames(table4) <- c("exp(Estimate)","Estimate","SE")
+kable(table4, caption = "Coefficients of Full Model", align = "l")
+```
+We can interpret the coefficents for the model as 
+
+- Intercept: For a plot of land with no timber, not grazed, and zero eucalpytus trees, the odds of a noisy miner being present is 1.76e-03. 
+
+- Eucs: Holding amount of Timber and Grazed status constant, for each additional eucalyptus tree on the plot of land there is an increase in the odds of a noisy miner being present by 2.12. 
+
+- Timber: Holding number of eucalpytus trees and whether the land was grazed constant, on a plot of land for each additional piece of timber on the ground, there is an increase in the odds of a noisy miner being present by 0.82.
+
+- Grazed: Holding number of eucalpytus trees and timber constant, for a plot of land that is grazed, there is a 0.087 increase in the odds of noisy miners being present compared to a plot of land that is not grazed. 
+
+```{r, include = FALSE}
+blr_rsq_nagelkerke(final_mod)
+model_dev <- final_mod$deviance
+null_dev <- bin_mod0$deviance
+1- model_dev/null_dev
+#Error rates
+error_rate <- mean((final_mod$fitted.values>0.5 & nminer$Miners==0) | (final_mod$fitted.values<0.5 & nminer$Miners==1))
+1-error_rate
+#Error rate of null model
+int <- sum(nminer$Miners)/length(nminer$Miners)
+error_null <- 1-int
+error_null
+```
+
+Using this model and the Nagelkerke R-Squared estimate, approximately 84% of variation can be predicted. Alternatively, using the Pseudo R-squared method, the r-squared value is 0.71.
+
+Additionally, using this model, the model correctly predicted the presence of miners 93% of the time (using a threshold of 0.5) compared to the null error rate of 45%.
+
+
+The chart below shows the binned residual plot for the final model. Similar to the residual plot for the full model, there are no concerns raised when examining this residual plot. All of the points are within 2 standard errors and show little patterns other than  slight bunching around the average. 
+
+```{r, echo= FALSE}
+binnedplot(final_mod$fitted.values,resid(final_mod, type = "pearson"), nclass=NULL, 
+           xlab="Expected Values", ylab="Average residual", 
+           main="Binned residual plot", 
+           cex.pts=0.8, col.pts=1, col.int="gray")
+```
+
+Next will look into the influence plot of the model to identify if there are any influential points. 
+
+Exploring the points identified on the influence plot, there are a few points of higher influence, 18,29, 7, and 28.
+
+Examining the impact of each case on each of the coefficient values, the 28th datapoint has a considerable influence on the Eucs and Timber coefficients, decreasing the eucs coefficeint by 1.08 and increasing the timber coefficient by 1.3. Additionally, the 29th data point changes the Timber coefficient by 2.6 and the grazed coefficient by -2.098670.This is likely due to an above average level of timber value.
+
+Although these points prove to be influential in the model they do not provide any reason for removal or concern. 
+
+```{r, echo = FALSE}
+#exploring influential points 
+influencePlot(final_mod)
+```
+
+
+```{r, include = FALSE}
+nminer[28,]
+nminer[29,]
+#cooks distance
+im <- influence.measures(final_mod)
+#understand how each case affects coefficient values 
+im$infmat
+```
+
+
+Laslty, below is a plot demonstrating how the probability of a Noisy Miner being present changes with number of Eucalpytus trees for the full model.   
+
+```{r, echo= FALSE}
+data("nminer")
+mod1 <-  glm(Miners ~ Eucs + Area + as.factor(Grazed) + as.factor(Shrubs) + Bulokes + Timber, data=nminer, family = "binomial")
+pframe1 <- with(nminer,expand.grid(Eucs=seq(min(Eucs),max(Eucs),length=100),
+                              Grazed = c(1), Shrubs = c(1),Bulokes = 151,Timber=22, Area= 16)) 
+pframe1$Miners <- predict(mod1,newdata=pframe1,type="response")   
+
+pframe2 <- with(nminer,expand.grid(Eucs=seq(min(Eucs),max(Eucs),length=100),
+                              Grazed = c(0), Shrubs = c(0),Bulokes = 151,Timber=22, Area = 16)) 
+pframe2$Miners <- predict(mod1,newdata=pframe2,type="response")  
+pframe3 <- with(nminer,expand.grid(Eucs=seq(min(Eucs),max(Eucs),length=100),
+                              Grazed = c(1), Shrubs = c(0),Bulokes = 151,Timber=22, Area = 16)) 
+pframe3$Miners <- predict(mod1,newdata=pframe3,type="response") 
+pframe4 <- with(nminer,expand.grid(Eucs=seq(min(Eucs),max(Eucs),length=100),
+                              Grazed = c(0), Shrubs = c(1),Bulokes = 151,Timber=22, Area = 16)) 
+pframe4$Miners <- predict(mod1,newdata=pframe4,type="response") 
+
+ggplot(data = nminer, aes(x= Eucs, y = Miners)) +
+  geom_point() +
+  geom_jitter() +
+  geom_line(data = pframe1, aes(col = "Grazed & Shrubs")) +
+  geom_line(data = pframe2, aes(col = "Not Grazed & No Shrubs")) + 
+  geom_line(data = pframe3, aes(col = "Grazed & No Shrubs")) +
+  geom_line(data = pframe4, aes(col = "Ungrazed & Shrubs")) +
+  scale_color_manual(name = "Legend", values = c("Grazed & Shrubs" = "blue","Not Grazed & No Shrubs" = "red","Grazed & No Shrubs"= "purple","Ungrazed & Shrubs"="green" ))
+
+#for some reason I had to uncode the factor for the variables at the beginnign so here it is printed again so it doesn't mess up your models below. 
+nminer$Miners <- as.factor(nminer$Miners)
+nminer$Grazed <- as.factor(nminer$Grazed)
+nminer$Shrubs <- as.factor(nminer$Shrubs)
+```
+
+**Poisson Regression**
+
+We began by building a full model using all the data available by including all the variables in the model. It is important to note that the assumed mean variance for a Poisson distribution is that the variance is equal to the mean, so we assume $\phi = 1$. However, the full model has residual deviance of 54.254  on 24  degrees of freedom indicating overdispersion ($\phi$ > 1). The Pearson estimate of $\phi$ results in $\hat{\phi} = 2.4202$, confirming that the variance of the response appears to exceed what we expect. When $\phi > 1$, we underestimate our standard errors, so coefficients may look significant when they are indeed not. In order to address the overdispersion, we tried fitting a quasi-posson model to retain some parts of the Poisson model without involving the full likelihood. This allowed us vary the usual variance function, by assuming a value for the dispersion $\phi$ greater than one.  For the quasi poison model with all of the explanatory variables, the only coefficent deemed significant is Eucs. 
+
+```{r, include = FALSE}
+poisson_mod1 <- glm(Minerab ~ Eucs + Grazed + Shrubs + Bulokes + Timber + Area, family = poisson, data = nminer)
+quasi_mod2 <- glm( Minerab   ~ Eucs + Grazed + Shrubs + Bulokes + Timber + Area, family = "quasipoisson", data = nminer)
+```
+
+
+```{r, include = FALSE}
+est.pm1 <- coef(summary(poisson_mod1))[, "Estimate"]
+est.qm2 <- coef(summary(quasi_mod2))[, "Estimate"]
+se.pm1 <- coef(summary(poisson_mod1))[, "Std. Error"]
+se.qm2 <- coef(summary(quasi_mod2))[, "Std. Error"]
+
+data.frame(Est.Pois = est.pm1, Est.Quasi = est.qm2,SE.Pois=se.pm1, SE.Quasi=se.qm2, ratio=se.qm2/se.pm1)
+```
+
+Table 6 illustrates that coefficent estimates are the same for the GLM and Quasi Poisson model, but the standard errors for each variable increase when we relax the assumption about the mean-variance relationship. This explains how Area was significant in the Poisson model, but is no longer significant in the Quasi-Poisson model. 
+
+The quasi poisson behaves like a log-likelihood function, but does not correspond to any probability function. As a result, the AIC and related statistics are not defined for quasi-models. Analysis of deviance tests are based on the F-tests since $\phi$ is estimated for the quasi-models. The F-test comparing the models with single term deletions indicates that when dropping single terms from the model, the only model that is significantly different from the current model is the model in which Eucs is dropped. 
+
+Since we do not have evidence that any of the other variables have a significant effect on the number of noisy miners we can drop them from the model. The final quasi-poisson model is below.
+
+```{r, echo = FALSE}
+quasi_mod3 <-  glm( Minerab   ~ Eucs, family = "quasipoisson", data = nminer)
+table_q1 <- coef(summary(quasi_mod3))[,1:2]
+table_q2 <- cbind(exp(quasi_mod3$coefficients),table_q1)
+colnames(table_q2) <- c("exp(Estimate)","Estimate","SE")
+kable(table_q2, caption = "Coefficients of Quasi Poisson Model", align = "l")
+```
+
+On average, the expected number of noisy miners in a transect with 0 eucalypt trees is 0.416. Each additional tree in a transect is associated with a 12.07% increase in the expected number of noisy miners. 
+
+```{r, echo = FALSE}
+par(mfrow = c(2,2))
+scatter.smooth(rstandard(quasi_mod3, type = "deviance") ~ quasi_mod3$linear.predictors, las=1,
+xlab="Linear Predictors", ylab="Standardized residuals")
+
+
+eta <- quasi_mod3$linear.predictor
+ z <- resid(quasi_mod3, type="working") + eta
+plot( z ~ eta, las=1, las=1,
+xlab="Linear Predictors", ylab="Working residuals, z")
+abline(0, 1, col="grey")
+termplot(quasi_mod3, partial.resid=TRUE, las=1)
+```
+
+The diagnostic plots look good, the model appears to be a good fit for the data and there are no clear patterns in any of the residual plots. 
+
+We also decided to identify outliers and influential points to determine whether or not the points actually have an inordinate influence on our model. 
+
+```{r, echo = FALSE, fig.height=2.5, fig.width = 3.5}
+influencePlot(quasi_mod3)
+```
+Observations 7, 11 and 17 have relatively high values for Cook's Distance, indicating that they have high influence on the fitted response values. We looked at these influential points to assess whether there is anything unusual about them that may be introducing bias to our model. 
+
+```{r, echo = FALSE}
+nminer[ c(7, 11,17)  ,]
+```
+
+Observation 11 is an outlier because it has an unusually high number of noisy miners, with  a value (18) more than twice as large as the next highest value in the distribution (9). Both of these observations have unusually high number of eucalyptus trees. The range of this variable is 32, and both of these values are at least 6 a greater than the next highest Eucs value. Observation 7 has a high number of noisy miners present, despite only having the median number of eucalypts, leading to a large residual. We have no information to lead us to believe these observations are impossible or data entry errors so we will keep them in the analysis. 
+
+**Negative Binomial Regression**
+
+Another option when a Poisson distribution is overdispersed is to fit a negative binomial that starts with Poisson regression model and add a multiplicative random effect $\theta$ to represent the unobserved heterogeneity with a gamma distribution. 
+
+```{r, include = FALSE}
+nbGLM2 <- glm.nb(Minerab ~ Eucs + Grazed + Shrubs + Bulokes + Timber + Area, data=nminer)
+final.NB <- step(nbGLM2)
+```
+
+We built a model with all of the explanatory variables and Eucs is the only coefficient that is deemed significant. Using a backwards stepwise algorithm by AIC, the final model includes Timber, Area, and Eucs. 
+
+```{r, echo = FALSE}
+table_nb1 <- coef(summary(final.NB))[,1:2]
+table_nb2 <- cbind(exp(final.NB$coefficients),table_nb1)
+colnames(table_nb2 ) <- c("exp(Estimate)","Estimate","SE")
+kable(table_nb2 , caption = "Coefficients of Negative Binomial Model", align = "l")
+```
+
+The final quasi-Poisson and negative binomial models are similar, but the coefficients and standard errors for the negative binomial vales are slightly greater. 
+
+```{r, echo = FALSE}
+par(mfrow = c(2,2))
+scatter.smooth(rstandard(final.NB , type = "deviance") ~ final.NB$linear.predictors, las=1,
+xlab="Linear Predictors", ylab="Standardized residuals")
+
+
+eta <-final.NB $linear.predictor
+ z <- resid(final.NB , type="working") + eta
+plot( z ~ eta, las=1, las=1,
+xlab="Linear Predictors", ylab="Working residuals, z")
+abline(0, 1, col="grey")
+termplot(final.NB , partial.resid=TRUE, las=1)
+```
+
+The residual diagnostic plots look okay. There are no concerning patterns or major violations of the assumptions. 
+
+```{r, echo=FALSE}
+est.nb <- coef(summary(final.NB))[, "Estimate"]
+est.qf <- c(coef(summary(quasi_mod3))[, "Estimate"], "-", "-")
+se.nb <- coef(summary(final.NB))[, "Std. Error"]
+se.qf <- c(coef(summary(quasi_mod3))[, "Std. Error"], "-", "-")
+
+kable(data.frame(Est.NB = est.nb, Est.Quasi = est.qf, SE.NB=se.nb, SE.Quasi=se.qf), digits= 3)
+```
+
+The quasi Poisson and negative binomial models have different variance functions so we can compute the mean and variance of the response for each group to assess which regression captures the mean-variance relationship more accurately. 
+
+```{r, echo = FALSE}
+g <- cut(final.NB$linear.predictors, breaks=quantile(final.NB$linear.predictors,seq(0,100,5)/100, na.rm = TRUE))
+
+m <- tapply(nminer$Minerab, g, mean)
+v <- tapply(nminer$Minerab, g, var)
+
+plot(m, v, xlab="Mean", ylab="Variance", main="Mean-Variance Relationship", col = "black", pch = 19) 
+points(m, 2.328067*m, col='green', lty = 1,pch=19,lwd=1)  
+points(m, (m + (m^2)/2.417669611), col='red', lty = 1,pch=19,lwd=1)  
+legend(1, 60, legend=c("Negative Binomial", "Quasi"),col=c("red", "green"), pch=19, cex=0.8)
+```
+
+This plot would be more informative if we had more observations, but it seems that the negative binomial distribution better captures the observed mean-variance relationship for the number of noisy miners.  
+
+```{r, echo = FALSE}
+g <- cut(final.NB$linear.predictors, breaks=quantile(final.NB$linear.predictors,seq(0,100,5)/100, na.rm = TRUE))
+
+m <- tapply(nminer$Minerab + .5, g, mean)
+v <- tapply(nminer$Minerab + .5, g, var)
+
+plot(m, v, xlab="Mean", ylab="Variance", main="Mean-Variance Relationship", col = "black", pch = 19) 
+points(m, 2.328067*m, col='green', lty = 1,pch=19,lwd=1)  
+points(m, (m + (m^2)/2.417669611), col='red', lty = 1,pch=19,lwd=1)  
+legend(1, 60, legend=c("Negative Binomial", "Quasi"),col=c("red", "green"), pch=19, cex=0.8)
+```
+
+
+**4. Discussion**
+
+Summary 
+
+Comparison to Paper - key differences
+-explain additional analyses they were able to run 
+
+
+# Appendix 1 
+
+
+```{r}
+species_df
+```
+
+```{r}
+ggplot(species_df, aes(x=Difference)) +
+  geom_histogram(alpha=0.5, position="identity", binwidth = .1) + ggtitle("Histogram of Difference in Proportions") + xlab("# of Noisy Miners")
+```
+
+As shown in the plot above, the distribution of the differences is not normal so a paired t-test would not be appropriate. 
+
+
+# Appendix 2 : Noisy Miner Count Modelling
+
+Poisson Full Model: 
+
+```{r, echo = FALSE }
+poisson_mod1 <- glm(Minerab ~ Eucs + Grazed + Shrubs + Bulokes + Timber + Area, family = poisson, data = nminer)
+summary(poisson_mod1)
+```
+
+Pearson estimate of $\phi$:
+
+```{r}
+sum(residuals(poisson_mod1, type = "pearson")^2)/24
+```
+
+Full Quasi Poisson Model: 
+
+```{r, echo = FALSE}
+quasi_mod2 <- glm( Minerab   ~ Eucs + Grazed + Shrubs + Bulokes + Timber + Area, family = "quasipoisson", data = nminer)
+summary(quasi_mod2)
+```
+
+Quasi Poisson Model Variable Selection: 
+
+```{r, echo = FALSE}
+quasi_mod2 <- glm( Minerab   ~ Eucs + Grazed + Shrubs + Bulokes + Timber + Area, family = "quasipoisson", data = nminer)
+drop1(quasi_mod2, test = "F")
+quasi_mod2b <- glm( Minerab   ~ Eucs +  Shrubs + Bulokes + Timber + Area, family = "quasipoisson", data = nminer)
+drop1(quasi_mod2b, test = "F")
+quasi_mod2c <- glm( Minerab   ~ Eucs +  Shrubs +  Timber + Area, family = "quasipoisson", data = nminer)
+drop1(quasi_mod2c, test = "F")
+quasi_mod2e <- glm( Minerab   ~ Eucs +  Timber + Area, family = "quasipoisson", data = nminer)
+drop1(quasi_mod2e, test = "F")
+quasi_mod2f <- glm( Minerab   ~ Eucs + Area, family = "quasipoisson", data = nminer)
+drop1(quasi_mod2f, test = "F")
+```
+
+Full negative binomial model: 
+
+```{r}
+nbGLM2 <- glm.nb(Minerab ~ Eucs + Grazed + Shrubs + Bulokes + Timber + Area, data=nminer)
+summary(nbGLM2)
+```
+
+Negative Binomial Model Variable Selection: 
+
+```{r}
+step(nbGLM2)
+```
+
+```{r}
+summary(final.NB)
+```
+
+
+# Appendix 3: Clustering 
+
+```{r}
+g.dist = daisy(nminer, metric="gower")
+pc = pamk(g.dist, criterion="asw")
+pc_object = pc$pamobject
+
+plot(pc_object)
+
+cluster1 <- c()
+cluster2 <- c()
+cluster3 <- c()
+cluster4 <- c()
+cluster5 <- c()
+  
+for (i in 1: length(pc_object$clustering) ) {
+  
+    if (pc_object$clustering[i] == 1) {
+      cluster1 <- c(cluster1, names(pc_object$clustering)[i])
+  } else if (pc_object$clustering[i] ==2) {
+    cluster2 <- c(cluster2, names(pc_object$clustering)[i])
+  } else if (pc_object$clustering[i] ==3) {
+    cluster3 <- c(cluster3, names(pc_object$clustering)[i])
+  } else if (pc_object$clustering[i] ==4) {
+    cluster4 <- c(cluster4, names(pc_object$clustering)[i])
+  } else {
+    cluster5 <- c(cluster5, names(pc_object$clustering)[i])
+  }
+  
+}
+
+cluster1_df <- nminer[cluster1, ]
+cluster2_df <- nminer[cluster2, ]
+cluster3_df <- nminer[cluster3, ]
+cluster4_df <- nminer[cluster4, ]
+cluster5_df <- nminer[cluster5, ]
+```
+
+
+# Appendix 5: Negative Binomial 
+
+```{r}
+summary(final.NB)
+```
+
+# Appendix 5: Binomial GLM
+
+Backwards variable selection for binomial GLM: 
+
+```{r}
+bw_mod <- step(bin_mod1, scope = formula(bin_mod1), direction = c("backward"))
+```
+
+Likelihood ratio test:
+
+```{r}
+#test to see if dropping bulokes and area is correct 
+test <-bw_mod$deviance -bin_mod1$deviance
+1-pchisq(test, 1) #drop bulokes and area 
+#from reduced model drop shrubs
+mod_remove <- glm(Miners~ Eucs + Grazed + Timber, data=nminer, family= "binomial")
+test <-mod_remove$deviance -bin_mod1$deviance
+1-pchisq(test, 1) #keep eucs
+#remove Area
+mod_remove <- glm(Miners~ Eucs + Grazed + Shrubs + Bulokes + Timber, data=nminer, family= "binomial")
+test <-mod_remove$deviance -bin_mod1$deviance
+1-pchisq(test, 1) #remove area
+#remove  grazed
+mod_remove <- glm(Miners~ Eucs +Area+ Shrubs + Bulokes + Timber, data=nminer, family= "binomial")
+test <-mod_remove$deviance -bin_mod1$deviance
+1-pchisq(test, 1)
+#remove shrubs
+mod_remove <- glm(Miners~ Eucs + Area + Grazed + Bulokes + Timber, data=nminer, family= "binomial")
+test <-mod_remove$deviance -bin_mod1$deviance
+1-pchisq(test, 1)
+#remove Bulokes
+mod_remove <- glm(Miners~ Eucs + Area + Grazed + Shrubs + Timber, data=nminer, family= "binomial")
+test <-mod_remove$deviance -bin_mod1$deviance
+1-pchisq(test, 1)
+#remove Timber
+mod_remove <- glm(Miners~ Eucs + Area + Grazed + Shrubs + Bulokes, data=nminer, family= "binomial")
+test <-mod_remove$deviance -bin_mod1$deviance
+1-pchisq(test, 1)
+```
+
+Summmary of Backwards Selection Model: 
+```{r}
+summary(bw_mod)
+```
+
+Summary of Full Model
+```{r}
+summary(bin_mod1)
+```
+
+Summary of Final Model 
+```{r}
+summary(final_mod)
+```
+
+# Appendix 7: One Sample Sign Test
+
+```{r, echo=FALSE}
+species_df$Difference <- species_df$Rminer_Present/17 - species_df$Rminer_Absent/14
+
+SIGN.test(species_df$Difference,
+          md = 0)
+```
+
+# Appendix 8: Nosiy Miner Count Modeling 
+
+```{r, echo = FALSE, fig.height = 2.5 , fig.width = 3.5}
+ggplot(nminer, aes(x=Minerab)) +
+  geom_histogram(alpha=0.5, position="identity", binwidth = 2) + ggtitle("Histogram of Noisy Miner Abundance") + xlab("# of Noisy Miners")
+```
+
+As we can see from the plot above, the distribution of noisy miner abundance is highly skewed right. 
